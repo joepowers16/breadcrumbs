@@ -4,7 +4,10 @@
 \alias{create_project_directories}
 \title{Creates the directories for a typical EDA project}
 \usage{
-create_project_directories()
+create_project_directories(project_name)
+}
+\arguments{
+\item{project_name}{a string representing the name of the Rproject}
 }
 \description{
 Creates the directories for a typical EDA project
