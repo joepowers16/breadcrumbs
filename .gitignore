@@ -36,4 +36,5 @@ vignettes/*.pdf
 rsconnect/
 .Rproj.user
 
-.Rbuildignore
+# large data files
+*_cloud_data/
