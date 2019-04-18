@@ -2,20 +2,21 @@
 % Please edit documentation in R/base_round.R
 \name{base_round}
 \alias{base_round}
-\title{Say what this function does in one line}
+\title{A function to round values to any base}
 \usage{
 base_round(x, base)
 }
 \arguments{
-\item{x}{is a variable representing something}
+\item{x}{is the vector you will be rounding}
 
-\item{data}{is the data}
+\item{base}{is the value you will be rounding to (e.g., 25 or .25)}
 }
 \description{
-Say what this function does in greater detail if that helps.
+This function will round values to any base (e.g., 25 or .25)
 }
 \examples{
-aaa_function_template(mtcars, x = mpg)
+base_round( c(23.67, 2.7, 52.9, 7.7, 99.4), base = .25 )
+base_round( c(23.67, 2.7, 52.9, 7.7, 99.4), base = 25 )
 }
-\keyword{efficiency}
-\keyword{organization}
+\keyword{base}
+\keyword{round}

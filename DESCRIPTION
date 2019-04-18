@@ -1,6 +1,6 @@
 Package: breadcrumbs
 Type: Package
-Title: Breadcrumbs Helps You Maintain A Tidy Workflow Durign EDA
+Title: Breadcrumbs Helps You Maintain A Tidy Workflow During EDA
 Version: 0.1.0
 Author: Joseph T. Powers
 Maintainer: Joseph T. Powers <joepowers16@gmail.com>
