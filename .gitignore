@@ -37,4 +37,4 @@ rsconnect/
 .Rproj.user
 
 # large data files
-*_cloud_data/
+*_cloud/
