@@ -8,17 +8,19 @@
 #' create_project_directories()
 
 create_project_directories <- function(project_name){
-  project_name_data <- paste0("data/", project_name, "_cloud_data")
+  project_cloud_dir <- paste0(project_name, "_cloud_dir")
 
   # build directories
-  eda_template <- c(
-      "data", project_name_data, paste(project_name_data, "raw", sep = "/"),
-      "munge", "analysis", "R"
-  )
+  eda_template <-
+    c(project_cloud_dir, "munge", "analysis", "R",
+      paste(project_cloud_dir, "reports", sep = "/"),
+      paste(project_cloud_dir, "data", sep = "/"),
+      paste(project_cloud_dir, "data", "raw", sep = "/")
+    )
 
-  sapply(eda_template, dir.create)
+  # sapply(eda_template, dir.create)
+  purrr::walk(eda_template, dir.create)
 
   file.create("file_paths.R") # File in which to save file paths
+  file.create("README.txt") # File in which to save file paths
 }
-
-
