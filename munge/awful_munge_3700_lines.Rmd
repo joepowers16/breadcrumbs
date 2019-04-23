@@ -1,0 +1,3638 @@
+# Load packages
+```{r}
+rm(list = ls()) # clear the workspace of all data objects
+ls() # list number of data objects in the workspace
+
+# load packages
+library(Hmisc)
+library(gtools) # for smartbind()
+library(psych)
+library(corrplot) # for colored cor tables
+library(tidyverse) # for %>% 
+```
+
+# I. October 2014 Survey 
+
+## Load and clean data
+```{r}
+# N = 418 for the October 2014 Study
+d <- read_csv("03_Oct2014_LDmindset_survey.csv")
+
+dim(d)
+
+d
+```
+
+```{r}
+
+# remove useless variables
+  d$Intro1 <- NULL
+  d$V2 <- NULL          
+  d$V3 <- NULL                
+  d$V4 <- NULL                
+  d$V5 <- NULL                
+  d$V6 <- NULL                
+  d$V7 <- NULL
+  d$V10 <- NULL
+  d$LocationLatitude <- NULL
+  d$LocationLongitude <- NULL	
+  d$LocationAccuracy <- NULL  
+  d$Q76 <- NULL
+  d$prac <- NULL
+
+# rename variables
+  d$Qual_ID <- as.character(d$V1); d$V1 <- NULL
+  d$start_time <- d$V8; d$V8 <- NULL
+  d$stop_time  <- d$V9; d$V9 <- NULL
+  d$howfeel_oe <- d$Q75; d$Q75 <- NULL
+
+# reset variable order
+    ## load moveme function
+    moveme <- function(data, tomove, where = "last", ba = NULL) {
+      temp <- setdiff(names(data), tomove)
+      x <- switch(
+        where,
+        first = data[c(tomove, temp)],
+        last = data[c(temp, tomove)],
+        before = {
+          if (is.null(ba)) stop("must specify ba column")
+          if (length(ba) > 1) stop("ba must be a single character string")
+          data[append(temp, values = tomove, after = (match(ba, temp)-1))]
+        },
+        after = {
+          if (is.null(ba)) stop("must specify ba column")
+          if (length(ba) > 1) stop("ba must be a single character string")
+          data[append(temp, values = tomove, after = (match(ba, temp)))]
+        })
+      x
+    }
+
+    # moveme(df, c("b", "c"))
+    # moveme(df, c("b", "c"), "first")
+    # moveme(df, c("b", "c"), "before", "e") # will move b and c before e.
+    # moveme(df, c("b", "c"), "after", "e")
+
+    ## Now move new vars to right places
+    colnames(d)
+    d <- moveme(d, c("Qual_ID"), "after", "idnum")
+```
+
+## Are all student id numbers accurate? 
+### How many cases are we starting with? (418)
+```{r}
+# reclass idnum and initials as character vars
+class(d$idnum)
+d$idnum <- as.character(d$idnum)
+d$initials <- as.character(d$initials)
+
+# record original idnums as idnum_orig
+d$idnum_orig <- d$idnum
+label(d$idnum_orig) = "idnumber provided by student. Not cleaned or verified against key."
+summary(d$idnum_orig)
+
+dim(d)
+```
+I have 418 cases, but many idnum_orig were mistentered. These were cleaned previously in the file '03_Oct2014_IDcleaning.csv', so I could merge in the cleaned idnumbers based on the Qualtrics idnumbers which are constant across both csv files. 
+
+## How many student-entered idnumbers match the school-provided key? (398/418)
+```{r}
+# load data of cleaned idnumbers you made last year
+cln_ids <- read.csv("03_Oct2014_IDcleaning.csv", head = TRUE)
+dim(cln_ids)  # Why are there only 416? One of the missing was CM who took survey later. Who is the other? 
+colnames(cln_ids)
+cln_ids$Qual_ID <- cln_ids$V1; cln_ids$V1 <- NULL
+
+# merge the cleaned idnumber subset with your Fall2014 data
+    ## create a subset for merging
+    cln_ids$clnIDdmy <- 1
+    cln_ids2 <- subset(cln_ids, select = c(Qual_ID, idnum_clean, clnIDdmy)); dim(cln_ids2)
+  
+    
+    ## Why are there only 416 Ps in your cln_ids data? 
+    subset(m, is.na(clnIDdmy), select = c(idnum_orig, initials, start_time))
+    >    idnum_orig initials     start_time
+    >281      48970       CM 10/29/14 12:39  # took survey after I cleaned data
+    >350      18910       ik  10/1/14 16:50  # took survey on time
+
+    ## 18910 logged in twice but took survey only once
+    names(cln_ids)
+    subset(cln_ids, initials_orig == "ik") # 18910 was redundant in the original data
+    subset(cln_ids, idnum_orig == "18910")
+    subset(d, idnum_orig == "18910", select = c(initials, start_time, Qual_ID)) # 18910 was redundant in the original data
+    subset(d, Qual_ID == "R_d0xTHUIk16iTmoR") # this entry was redundant
+    d <- subset(d, Qual_ID != "R_d0xTHUIk16iTmoR"); dim(d) # this entry was redundant and has been dropped
+
+    ## merge the datasets
+    m <- merge(d, cln_ids2, by = "Qual_ID", all = TRUE)
+    dim(m) 
+    colnames(m)
+
+# Let's see the 20 students without idnum_clean
+subset(m, is.na(idnum_clean), select = c(idnum_orig, initials)); dim(subset(m, is.na(idnum_clean)))
+
+      ## Tina's 10.22.14 email sheds light on these missing cases. 
+      te <- read.csv('03_Oct2014_MissingIdEmail.csv', head = T); dim(te)
+      colnames(te)
+      ### rename the idnum variable from Tina's email
+      te$idnum_orig <- te$idnums.from.survey.10.01.14; te$idnums.from.survey.10.01.14 <- NULL
+      ### initials_te & idnum_te are those supplied by Tina's email
+      te$initials_te <- te$initials; te$initials <- NULL
+      te$idnum_te <- te$Study.ID; te$Study.ID <- NULL # te$idnum_te are accurate idnumbers
+     
+      # merge data to compare. 
+      temp <- merge(m, te, by = "idnum_orig", all = TRUE)
+      dim(temp)
+      temp2 <- subset(temp, select = c("idnum_clean", "idnum_orig", "idnum_te", "initials_te", "initials", "JP_fill_in"))
+
+      # looks like I'd already incorporated these idnumbers, except 19610
+      subset(temp2, !is.na(JP_fill_in))
+          # fix the idnum_clean for student __________20160
+          m$idnum_clean <- as.numeric(m$idnum_clean)
+          m$idnum_clean [m$idnum_orig == "__________20160"] <- 19610
+          describe(m$idnum_clean)
+          dim(m)
+          class(m$idnum_clean)
+
+# clean up data order
+names(m)
+m <- moveme(m, c("idnum_clean", "idnum_orig"), "before", "Qual_ID")
+m$clnIDdmy <- NULL
+subset(m, select = c(idnum_clean, idnum_orig, idnum))
+m$temp <- ifelse(m$idnum_orig == m$idnum, 1, 0); table(m$temp) # all match
+m$temp <- NULL
+
+# Of 417 cases there are 398 cases with recognizable idnumbers
+dim(m)
+dim(subset(m, !is.na(idnum_clean)))
+``` 
+So the October 2014 survey I had 417 takers:
+As of this chunk 20 are without recognized IDnumbers, 398 have recognized IDnumbers.
+
+## Can you find the idnumbers of those 20 who couldn't be matched? 
+### View subset of students without recognized idnumbers
+```{r idnumbers of 20 who couldn't be matched}
+# subset with unmatched IDs
+umid <- subset(m, is.na(idnum_clean)); dim(umid)
+names(umid)
+
+# umid$idnum and umid$idnum_orig are redundant
+ifelse(umid$idnum == umid$idnum_orig, 1, 0)
+    umid$idnum <- NULL
+
+# there are some identifiers in the missing data
+sort(umid$idnum_orig)
+table(umid$idnum_orig)
+subset(umid, select = c(idnum_orig, initials))
+```
+7 of the 20 entered an unrecognized idnumber
+13 of 20 entered the url instead of the website
+
+### Move unrecognized idnum_orig to idnum_clean for cases without an idnum_clean and avoid duplicates.
+```{r}
+# move unrecognized idnum_origs to idnum_clean for cases without an idnum_clean and avoid duplicates
+class(m$idnum_clean)
+temp <- subset(m, is.na(idnum_clean), select = c(idnum_clean, Qual_ID, idnum_orig, initials)); temp
+temp[order(temp$idnum_orig),] 
+summary(m$idnum_clean)# 20 NAs
+m$idnum_clean <- as.numeric(m$idnum_clean)
+
+# impose the idnums for 3 cases whose idnumbers were provided by students, but match no school records. 
+m$idnum_clean [m$Qual_ID == "R_8B9NZpUsFVBmuBn"] <- 44860 
+m$idnum_clean [m$Qual_ID == "R_efAXweKR3ZsQ2Lr"] <- 32500 
+m$idnum_clean [m$Qual_ID == "R_9WuHZQgfn2MztRj"] <- 48970 
+
+# These 4 students entered ID numbers that duplicate other ID numbers and don't match the intials entered by the student. 
+    # m$idnum_clean [m$Qual_ID == "R_d0xTHUIk16iTmoR"] <- "18910" # would create a duplicate  
+    # m$idnum_clean [m$Qual_ID == "R_6YHhjGoTr90bocR"] <- "36390" # would create a duplicate
+    # m$idnum_clean [m$Qual_ID == "R_9Ti2V5iEcdza2ZT"] <- "44860" # would create a duplicate     
+    # m$idnum_clean [m$Qual_ID == "R_eXvKrSEoz1ZxMJT"] <- "44870" # would create a duplicate
+
+# There are no duplicated IDs under idnum_clean
+    sum(duplicated(m$idnum_clean)) 
+    m$tempIDdup_check <- duplicated(m$idnum_clean)
+    subset(m, tempIDdup_check == TRUE, select = c(idnum_clean))
+
+# There are 401 unique values for idnum_clean
+sum(!is.na(m$idnum_clean)) # 401
+sort(m$idnum_clean)
+```
+Of my 418 participants, 401 have unique idnumbers in idnum_clean. 
+398 of the 401 have idnumbers that are matched with school records. The difference of 3 represents people who provided a clean idnumber that matched no records, or duplicated another idnumber while not matching provided student initials. 
+
+## I have to give these students temporary idnumbers to enable later merging. 
+```{r temp id numbers for NA idnum_clean}
+# Find the Qualtrics IDs for those without clean idnumbers
+newIDs <- subset(m, is.na(idnum_clean)); dim(newIDs)
+newIDs$Qual_ID
+
+# Now force temporary IDs upon them
+class(m$idnum_clean)
+m$idnum_clean [m$Qual_ID == "R_03u2CMOUDp8XHhP"] <- 99999001
+m$idnum_clean [m$Qual_ID == "R_086J8YtIDQw2LXf"] <- 99999002
+m$idnum_clean [m$Qual_ID == "R_1AmbXuyNDFZiDSR"] <- 99999003 
+m$idnum_clean [m$Qual_ID == "R_3DZB8hBNbuaajSl"] <- 99999004
+m$idnum_clean [m$Qual_ID == "R_4UA4eFzJnipXn93"] <- 99999005 
+m$idnum_clean [m$Qual_ID == "R_5oPdfJEq2Ej39zf"] <- 99999006 
+m$idnum_clean [m$Qual_ID == "R_6YHhjGoTr90bocR"] <- 99999007 
+m$idnum_clean [m$Qual_ID == "R_73NSYm22eisYcNn"] <- 99999008
+m$idnum_clean [m$Qual_ID == "R_9Ti2V5iEcdza2ZT"] <- 99999009 
+m$idnum_clean [m$Qual_ID == "R_ahsO23AVLj4UC9v"] <- 99999010 
+m$idnum_clean [m$Qual_ID == "R_b2BdU6zofpd3CXb"] <- 99999011 
+m$idnum_clean [m$Qual_ID == "R_b2YyU92nsc89Uhf"] <- 99999012
+m$idnum_clean [m$Qual_ID == "R_eeXCD4BAhoWXb8x"] <- 99999013 
+m$idnum_clean [m$Qual_ID == "R_emS99MXNLIshgBn"] <- 99999014 
+m$idnum_clean [m$Qual_ID == "R_eOFk15lLLSoxiND"] <- 99999015
+m$idnum_clean [m$Qual_ID == "R_eXvKrSEoz1ZxMJT"] <- 99999016
+
+class(m$idnum_clean)
+
+sum(is.na(m$idnum_clean)) # No NAs; all Ps have IDs now
+```
+
+## Is there any remaining way to ID these 16 Ps with temporary IDnumbers? 
+```{r}
+# I have their intials
+subset(newIDs, select = c(initials, idnum_orig))
+names(d)
+
+# all were under 18
+subset(newIDs, select = c("minor", "consent", "assent")) 
+
+# Are there no unclaimed initials that match? 
+
+# Do later surveys or grade records offer indication of who they might be?
+```
+__ detective work remains for 16 Ps with temporary idnumbers in chunk above!!!
+
+## tag the data frame from Fall 2014 with _f14
+```{r}
+library(dplyr)
+names(m)[2:length(names(m))] <- paste0(names(m)[2:length(names(m))], "_f14")
+```
+
+# II. 2013-14 Prior Performance and Demographic Data
+
+## Demographic and Progress Testing Data
+```{r}
+# main data 417 cases with 16 temp idnumbers I added to those without idnumbers. temp IDs begin 999. 
+dim(m); sum(is.na(m$idnum_clean))
+
+# setwd for data to merge
+setwd("~/Box Sync/LD/10_LD_data_merging/04_2013-14_LDstudentsData")
+
+# Demographic data
+dem <- read.csv('Student_Demographic_FINAL.csv', head = T)
+    dim(dem); names(dem)   # 448 5
+    dem$idnum_clean <- as.numeric(dem$StudentID); dem$StudentID <- NULL
+    sum(is.na(dem$idnum_clean)) # 0 NAs
+    sum(duplicated(dem$idnum_clean)) # 0 duplicates
+
+# Progress testing data
+prog <- read.csv('Student_ProgressTesting_FINAL.csv', head = T)
+    dim(prog); names(prog) # 445  23
+    prog$idnum_clean <- as.numeric(prog$StudentID) 
+      prog$StudentID <- NULL
+    sum(is.na(prog$idnum_clean)) # 0 NAs
+    sum(duplicated(prog$idnum_clean)) # 1 duplicate 
+        # Why is there a duplicate? 
+        # 33420 has two sets of scores, take the more recent WISC drop the older WISC, average GORTs
+        temp33420 <- subset(prog, idnum_clean == 33420)
+        # write.csv(temp33420, "temp33420.csv") # this file was then processed where WISC recent scores and GORT average scores were used because WISC was given on different dates and GORT was given twice on same date, and then merged back into the file Student_ProgressTestingFINAL to create Student_ProgressTesting_FIXED33420.
+        # The double score for GORT on one day is super strange and I'll ask Tina about it later!!!
+        prog <- read.csv("Student_ProgressTesting_FIXED33420.csv", head = T)
+        dim(prog) # 444 23
+        prog$idnum_clean <- as.numeric(prog$StudentID) 
+        prog$StudentID <- NULL
+```
+So I have Progress Testing on 444 students and Demo data on 448. 
+
+```{r}
+# begin merging
+  # temp IDs for testing the merge
+  m$test_id_m <- m$idnum_clean
+  dem$test_id_dem <- dem$idnum_clean
+  names(dem)
+  dem <- moveme(dem, c("idnum_clean"), "before", "Birthdate") 
+  # tag the dem data 
+  names(dem)[2:length(names(dem))] <- paste0(names(dem)[2:length(names(dem))], "_1314")
+  names(dem)
+
+  # merge
+  m2 <- merge(m, dem, by = "idnum_clean", all = TRUE)
+  dim(m2) # 466
+      # test merge
+      m2$test <- m2$test_id_m - m2$test_id_dem; table(m2$test) # all zeroes confirms clean merge
+      # drop testing vars
+      m2$test <- NULL; m2$test_id_m <- NULL;  m2$test_id_dem <- NULL 
+  # temp IDs for testing the merge
+  m2$test_id_m <- m2$idnum_clean
+  prog$test_id_prog <- prog$idnum_clean
+  
+  # tag the prog data 
+  names(prog)
+  prog <- moveme(prog, c("idnum_clean"), "before", "Pattern") 
+  names(prog)[2:length(names(prog))] <- paste0(names(prog)[2:length(names(prog))], "_1314")
+  names(prog)
+
+  # merge
+  m3 <- merge(m2, prog, by = "idnum_clean", all = TRUE)
+  dim(m3) # 466 
+      # test merge
+      m3$test <- m3$test_id_m - m3$test_id_prog; table(m3$test) # all zeroes confirms clean merge
+      m3$test <- NULL; m3$test_id_m <- NULL; m3$test_id_prog <- NULL;
+  # confirm no NAs or duplicates for idnum_clean
+  sum(is.na(m3$idnum_clean))
+  sum(duplicated(m3$idnum_clean)) # 0
+
+  # overwrite m with m3
+  m <- m3
+```
+
+```{r calculate composite variables for gort and WISC IQ}
+m$gort_1314 <- apply(X = m[,c("GORT.Reading.Accur_1314",  "GORT.Reading.Comp_1314",  "GORT.Reading.Rate_1314")],
+                MARGIN =1, FUN = mean, na.rm = T)
+  m <- moveme(m, c("gort_1314"),"before", "GORT.Reading.Accur_1314")
+  label(m$gort1314) = "mean GORT score from 2013-14 data" 
+  describe(m$gort1314)
+  hist(m$gort1314)
+
+m$WISC_1314 <- apply(X = m[,c("WISC.WorkingMemory_1314","WISC.VerbalComp_1314","WISC.PerceptualReasoning_1314","WISC.ProcessingSpeed_1314")],
+                MARGIN =1, FUN = mean, na.rm = T)
+  m <- moveme(m, c("WISC_1314"),"after", "WISC_TestDAte_1314")
+  label(m$WISC_1314) = "mean WISC IQ score from 2013-14 data" 
+  describe(m$WISC_1314)
+  hist(m$WISC_1314)
+```
+
+### Sort by Pattern (~text-to-column)
+This chunk is to text-to-column the Pattern data and then to merge it back in with the main dataset. 
+```{r Sort by pattern}
+library(splitstackshape)
+dim(m)
+t <- subset(m, select = c(idnum_clean, Pattern_1314)); dim(t) # 466   2
+t$idnum_clean # bunch of NAs at end. Checking above df's to see why.
+t2 <- cSplit(t, 'Pattern_1314', sep=", ", type.convert=FALSE)
+names(t2) # no one had more than 6 Patterns
+
+i <- 1
+t2$Pattern1_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern1_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern1_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern1_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern1_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern1_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 2
+t2$Pattern2_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern2_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern2_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern2_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern2_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern2_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 3
+t2$Pattern3_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern3_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern3_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern3_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern3_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern3_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 4
+t2$Pattern4_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern4_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern4_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern4_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern4_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern4_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 5
+t2$Pattern5_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern5_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern5_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern5_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern5_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern5_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 6
+t2$Pattern6_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern6_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern6_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern6_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern6_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern6_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 7
+t2$Pattern7_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern7_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern7_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern7_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern7_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern7_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 8
+t2$Pattern8_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern8_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern8_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern8_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern8_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern8_1314 [t2$Pattern_1314_6 == i] <- i
+
+i <- 9
+t2$Pattern9_1314 [t2$Pattern_1314_1 == i] <- i
+t2$Pattern9_1314 [t2$Pattern_1314_2 == i] <- i
+t2$Pattern9_1314 [t2$Pattern_1314_3 == i] <- i
+t2$Pattern9_1314 [t2$Pattern_1314_4 == i] <- i
+t2$Pattern9_1314 [t2$Pattern_1314_5 == i] <- i
+t2$Pattern9_1314 [t2$Pattern_1314_6 == i] <- i
+
+head(t2)
+describe(t2$Pattern1_1314)
+describe(t2$Pattern2_1314)
+describe(t2$Pattern3_1314)
+describe(t2$Pattern4_1314)
+describe(t2$Pattern5_1314)
+describe(t2$Pattern6_1314)
+describe(t2$Pattern7_1314)
+describe(t2$Pattern8_1314)
+describe(t2$Pattern9_1314)
+
+# Remove variables you don't want merged back in with the main dataset
+t2$Pattern_1314_1 <- NULL
+t2$Pattern_1314_2 <- NULL
+t2$Pattern_1314_3 <- NULL
+t2$Pattern_1314_4 <- NULL
+t2$Pattern_1314_5 <- NULL
+t2$Pattern_1314_6 <- NULL
+names(t2)
+
+class(t2)
+t2 <- data.frame(t2)
+dim(t2); colnames(t2); class(t2)
+t2$idnum_clean
+
+
+# merge with m, the survey data with complete idnumbers
+m$testidm <- m$idnum_clean
+t2$testidt <- t2$idnum_clean
+m <- merge(m, t2, by = "idnum_clean", all = TRUE); dim(m)
+  # test merger
+  m$test <- m$testidm - t2$testidt; table(m$test)
+  m$test <- NULL; m$testidm <- NULL; t2$testidt <- NULL
+  # check the merger
+  length(unique(m$idnum_clean)) # 466 
+  sum(duplicated(m$idnum_clean)) # 0
+  sum(is.na(m$idnum_clean)) # 0
+
+dim(m) # 466 109
+names(m)
+
+# drop extra vars
+m$testidt <- NULL
+```
+
+## Grades data need to be recast as wide. 
+```{r convert grades from long to wide}
+# Demographic and Progress Testing Files look like wide data
+
+# set wd to 2013-14 grades folder
+setwd("~/Box Sync/LD/10_LD_data_merging/04_2013-14_LDstudentsData")
+
+# read in grades with na.strings = "" so that NAs appear in blank spaces. 
+gr <- read.csv("Student_ClassroomGrades_FINAL.csv", na.strings = "", head = T)
+dim(gr); names(gr)
+head(gr)
+class(gr$Course)
+
+sum(is.na(gr$Course)) # 164 course performance grades have no course name associated with them. Might these be final grades for the term? FUP!!!
+
+# Prepare grades data for merging
+# paste course identyifing data into one variable course_yr_term
+    gr$Course2 <- gsub("[ ]", "_", gr$Course)
+    gr$course_yr_trm <- paste(gr$Course2, "_1314t", gr$Semester_Term, sep="")
+# rename performance variable
+gr$score <- gr$Grade; gr$Grade <- NULL
+
+# Convert data from long to wide format using cast()
+  # create subset that drops nameless courses from data
+  cp <- subset(gr, !is.na(Course))
+  dim(cp)
+  sum(is.na(cp$StudentID)) # 0 NAs
+
+  # view key variables
+  describe(cp$StudentID); length(unique(cp$StudentID)) # 349 unique IDs
+  
+  summary(cp$course_yr_trm)
+  describe(cp$score)
+  
+  cp$idnum_clean <- cp$StudentID
+  
+  # create a subset of the variables you will transform to a wide dataset
+  cp2 <- subset(cp, select = c(idnum_clean, course_yr_trm, score))
+  dim(cp2)
+  head(cp2)
+
+# load packages
+library(reshape2)
+w <- dcast(cp2, idnum_clean ~ course_yr_trm,
+           value.var = "score",
+           fun.aggregate = mean, 
+           na.rm = TRUE)
+      # what is the effect of na.rm=T here???
+      # what is the effect of mean in fun.aggregate???
+      # how can I confirm if any data were lost???
+
+dim(w) 
+  # 349 unique idnumber matches the number of unique IDs in describe(cp$StudentID)
+  # 167 + 1 (ID col) columns matches describe(cp$course_yr_trm) values for unique course_yr_trm values
+# test <- write.csv(w, 'test.csv') 
+```
+
+## tag and merge your 2013-14 prior performance data with the fall 2014 data
+Did not need to tag grading variables as this had already occurred
+```{rmerge}
+names(w)
+# Merge your wide 1314 grades data with the fall 2014 data
+dim(w) 
+dim(m)
+
+# test vars for merger
+w$testw <- w$idnum_clean
+m$testm <- m$idnum_clean
+
+m2 <- merge(m, w, by = "idnum_clean", all = TRUE); dim(m2) # 466
+m2$test <- m2$testw-m2$testm; table(m2$test)
+m2$test <- NULL; m2$testw <- NULL; m2$testm <- NULL
+
+# merger looks good, so overwrite
+m <- m2
+names(m)
+```
+"w" is the wide data. 
+__ Looks good but have RAs spot check 10 cases each.
+
+```{r}
+# How many took the Fall 2014 survey? 
+dim(m) # [1] 466 279
+sum(!is.na(m$Qual_ID)) # 417 took the survey is consistent with earlier figures. 
+sum(duplicated(m$Qual_ID)) # these 48 duplicated Qual_IDs are the NAs who I have data for, but did not take survey
+  m$temp_chk <- duplicated(m$Qual_ID)
+  subset(m, temp_chk == "TRUE", select = c(Qual_ID))
+
+    # drop extra var 
+    m$temp_chk <- NULL
+```
+At this point I have merged the Fall 2014 data and the grades data from the prior year. 
+There are 466 people in my data. 
+417 survey takers and 49 additional cases for whom I just have data. (10/21/15)
+
+# III. Spring 2015 Mindset intervention data
+
+## Mindset Data from Spring 2015
+Reduce dataframe size by dropping useless variables. 
+```{r drop timing variables from survey for now}
+setwd("~/Box Sync/LD/10_LD_data_merging")
+ms <- read.csv("05_LD_Apr2015_master.csv", na.strings = "", head = T)
+dim(ms) # [1] 414 638
+sum(is.na(ms$idnum))
+```
+
+```{r drop excess variables and relabel vars}
+# relabel vars
+ms$Qual_ID <- as.character(ms$V1); ms$V1 <- NULL
+ms$EndApr2015 <- ms$V9; ms$V9 <- NULL
+ms$StartApr2015 <- ms$V8; ms$V8 <- NULL
+ms$read_auton <- ms$Q336; ms$Q336 <- NULL
+ms$read_ctrl <- ms$Q335; ms$Q335 <- NULL
+ms$read_help <- ms$Q334; ms$Q334 <- NULL
+ms$read_imp <- ms$Q333; ms$Q333 <- NULL
+ms$read_days <- ms$Q332; ms$Q332 <- NULL
+ms$rc_see <- ms$Q187_4; ms$Q187_4 <- NULL
+ms$rc_apsee <- ms$Q187_3; ms$Q187_3 <- NULL
+ms$rc_rass <- ms$Q187_2; ms$Q187_2 <- NULL
+ms$rc_ap <- ms$Q187_1; ms$Q187_1 <- NULL
+ms$cnt_auton <- ms$Q170; ms$Q170 <- NULL
+ms$cnt_ctrl <- ms$Q169; ms$Q169 <- NULL
+ms$vid_prob_oe <- ms$Q161; ms$Q161 <- NULL
+ms$vid_play <- ms$Q160; ms$Q160 <- NULL
+ms$cond_ms <- ms$DO.BR.FL_9; ms$DO.BR.FL_9 <- NULL
+ms$cnt_use <- ms$CNT_use; ms$CNT_use <- NULL
+ms$cnt_imp <- ms$CNT_imp; ms$CNT_imp <- NULL
+ms$cnt_descr <- ms$CNT_descr; ms$CNT_descr <- NULL
+ms$cnt_burden <- ms$CNT_burden; ms$CNT_burden <- NULL
+ms$bel <- ms$Q457; ms$Q457 <- NULL
+
+# variables to drop flagged in excel and transpose pasted below
+ms2 <- subset(ms, select = -c(assent,   forebr, 	grow_out, 	intr1, 	kayla, 	new.link, 	Q1, 	Q13, 	Q133t_1, 	Q133t_2, 	Q133t_3, 	Q133t_4, 	Q139t_1, 	Q139t_2, 	Q139t_3, 	Q139t_4, 	Q13t_1, 	Q13t_2, 	Q13t_3, 	Q13t_4, 	Q15, 	Q152, 	Q153_1, 	Q153_2, 	Q153_3, 	Q153_4, 	Q155_1, 	Q155_2, 	Q155_3, 	Q155_4, 	Q156, 	Q156t_1, 	Q156t_2, 	Q156t_3, 	Q156t_4, 	Q158, 	Q159_1, 	Q159_2, 	Q159_3, 	Q159_4, 	Q161_1, 	Q161_2, 	Q161_3, 	Q161_4, 	Q162, 	Q163_1, 	Q163_2, 	Q163_3, 	Q163_4, 	Q164, 	Q165_1, 	Q165_2, 	Q165_3, 	Q165_4, 	Q166, 	Q167_1, 	Q167_2, 	Q167_3, 	Q167_4, 	Q168, 	q168t_1, 	q168t_2, 	q168t_3, 	q168t_4, 	Q17, 	Q171_1, 	Q171_2, 	Q171_3, 	Q171_4, 	Q172, 	q172t_1, 	q172t_2, 	q172t_3, 	q172t_4, 	Q173_1, 	Q173_2, 	Q173_3, 	Q173_4, 	Q174_1, 	Q174_2, 	Q174_3, 	Q174_4, 	Q174, 	Q174t_1, 	Q174t_2, 	Q174t_3, 	Q174t_4, 	Q175_1, 	Q175_2, 	Q175_3, 	Q175_4, 	Q176, 	Q177_1, 	Q177_2, 	Q177_3, 	Q177_4, 	Q178, 	Q179_1, 	Q179_2, 	Q179_3, 	Q179_4, 	Q181_1, 	Q181_2, 	Q181_3, 	Q181_4, 	Q182, 	Q183_1, 	Q183_2, 	Q183_3, 	Q183_4, 	Q184, 	q184t_1, 	q184t_2, 	q184t_3, 	q184t_4, 	Q186_1, 	Q186_2, 	Q186_3, 	Q186_4, 	Q186, 	q186t_1, 	q186t_2, 	q186t_3, 	q186t_4, 	Q188_1, 	Q188_2, 	Q188_3, 	Q188_4, 	Q188, 	Q189_1, 	Q189_2, 	Q189_3, 	Q189_4, 	Q189, 	Q19, 	Q190_1, 	Q190_2, 	Q190_3, 	Q190_4, 	Q190, 	q190t_1, 	q190t_2, 	q190t_3, 	q190t_4, 	Q192_1, 	Q192_2, 	Q192_3, 	Q192_4, 	Q192, 	Q193_1, 	Q193_2, 	Q193_3, 	Q193_4, 	Q194_1, 	Q194_2, 	Q194_3, 	Q194_4, 	Q195_1, 	Q195_2, 	Q195_3, 	Q195_4, 	Q198_1, 	Q198_2, 	Q198_3, 	Q198_4, 	Q199_1, 	Q199_2, 	Q199_3, 	Q199_4, 	q1t_1, 	q1t_2, 	q1t_3, 	q1t_4, 	Q200_1, 	Q200_2, 	Q200_3, 	Q200_4, 	Q201_1, 	Q201_2, 	Q201_3, 	Q201_4, 	Q203_1, 	Q203_2, 	Q203_3, 	Q203_4, 	Q204_1, 	Q204_2, 	Q204_3, 	Q204_4, 	Q205_1, 	Q205_2, 	Q205_3, 	Q205_4, 	Q207_1, 	Q207_2, 	Q207_3, 	Q207_4, 	Q208_1, 	Q208_2, 	Q208_3, 	Q208_4, 	Q209_1, 	Q209_2, 	Q209_3, 	Q209_4, 	Q210_1, 	Q210_2, 	Q210_3, 	Q210_4, 	Q211_1, 	Q211_2, 	Q211_3, 	Q211_4, 	Q212_1, 	Q212_2, 	Q212_3, 	Q212_4, 	Q213_1, 	Q213_2, 	Q213_3, 	Q213_4, 	Q214_1, 	Q214_2, 	Q214_3, 	Q214_4, 	Q215_1, 	Q215_2, 	Q215_3, 	Q215_4, 	Q216_1, 	Q216_2, 	Q216_3, 	Q216_4, 	Q217_1, 	Q217_2, 	Q217_3, 	Q217_4, 	Q217, 	Q219_1, 	Q219_2, 	Q219_3, 	Q219_4, 	Q221_1, 	Q221_2, 	Q221_3, 	Q221_4, 	Q222_1, 	Q222_2, 	Q222_3, 	Q222_4, 	Q223_1, 	Q223_2, 	Q223_3, 	Q223_4, 	Q224_1, 	Q224_2, 	Q224_3, 	Q224_4, 	Q225_1, 	Q225_2, 	Q225_3, 	Q225_4, 	Q226_1, 	Q226_2, 	Q226_3, 	Q226_4, 	Q227_1, 	Q227_2, 	Q227_3, 	Q227_4, 	Q228_1, 	Q228_2, 	Q228_3, 	Q228_4, 	Q229_1, 	Q229_2, 	Q229_3, 	Q229_4, 	Q23, 	Q230_1, 	Q230_2, 	Q230_3, 	Q230_4, 	Q231_1, 	Q231_2, 	Q231_3, 	Q231_4, 	Q232_1, 	Q232_2, 	Q232_3, 	Q232_4, 	Q233_1, 	Q233_2, 	Q233_3, 	Q233_4, 	Q234_1, 	Q234_2, 	Q234_3, 	Q234_4, 	Q235_1, 	Q235_2, 	Q235_3, 	Q235_4, 	Q236_1, 	Q236_2, 	Q236_3, 	Q236_4, 	Q237_1, 	Q237_2, 	Q237_3, 	Q237_4, 	Q238_1, 	Q238_2, 	Q238_3, 	Q238_4, 	Q239_1, 	Q239_2, 	Q239_3, 	Q239_4, 	Q240_1, 	Q240_2, 	Q240_3, 	Q240_4, 	Q241_1, 	Q241_2, 	Q241_3, 	Q241_4, 	Q242_1, 	Q242_2, 	Q242_3, 	Q242_4, 	Q243_1, 	Q243_2, 	Q243_3, 	Q243_4, 	Q244_1, 	Q244_2, 	Q244_3, 	Q244_4, 	Q245_1, 	Q245_2, 	Q245_3, 	Q245_4, 	Q246_1, 	Q246_2, 	Q246_3, 	Q246_4, 	Q247_1, 	Q247_2, 	Q247_3, 	Q247_4, 	Q248_1, 	Q248_2, 	Q248_3, 	Q248_4, 	Q249_1, 	Q249_2, 	Q249_3, 	Q249_4, 	Q25, 	Q250_1, 	Q250_2, 	Q250_3, 	Q250_4, 	Q251_1, 	Q251_2, 	Q251_3, 	Q251_4, 	Q252_1, 	Q252_2, 	Q252_3, 	Q252_4, 	Q253_1, 	Q253_2, 	Q253_3, 	Q253_4, 	Q254_1, 	Q254_2, 	Q254_3, 	Q254_4, 	Q255_1, 	Q255_2, 	Q255_3, 	Q255_4, 	Q256_1, 	Q256_2, 	Q256_3, 	Q256_4, 	Q257_1, 	Q257_2, 	Q257_3, 	Q257_4, 	Q258_1, 	Q258_2, 	Q258_3, 	Q258_4, 	Q259_1, 	Q259_2, 	Q259_3, 	Q259_4, 	Q265_1, 	Q265_2, 	Q265_3, 	Q265_4, 	Q266_1, 	Q266_2, 	Q266_3, 	Q266_4, 	Q267_1, 	Q267_2, 	Q267_3, 	Q267_4, 	Q268_1, 	Q268_2, 	Q268_3, 	Q268_4, 	Q269_1, 	Q269_2, 	Q269_3, 	Q269_4, 	Q270_1, 	Q270_2, 	Q270_3, 	Q270_4, 	Q271_1, 	Q271_2, 	Q271_3, 	Q271_4, 	Q272_1, 	Q272_2, 	Q272_3, 	Q272_4, 	Q273_1, 	Q273_2, 	Q273_3, 	Q273_4, 	Q274_1, 	Q274_2, 	Q274_3, 	Q274_4, 	Q275_1, 	Q275_2, 	Q275_3, 	Q275_4, 	Q276_1, 	Q276_2, 	Q276_3, 	Q276_4, 	Q278_1, 	Q278_2, 	Q278_3))
+# still dropping variables
+ms3 <- subset(ms2, select = -c(V3, V4, V5, V6, V7, V10, Q278_4, 	Q280_1, 	Q280_2, 	Q280_3, 	Q280_4, 	Q281_1, 	Q281_2, 	Q281_3, 	Q281_4, 	Q282_1, 	Q282_2, 	Q282_3, 	Q282_4, 	Q283_1, 	Q283_2, 	Q283_3, 	Q283_4, 	Q284_1, 	Q284_2, 	Q284_3, 	Q284_4, 	Q286_1, 	Q286_2, 	Q286_3, 	Q286_4, 	Q287_1, 	Q287_2, 	Q287_3, 	Q287_4, 	Q288_1, 	Q288_2, 	Q288_3, 	Q288_4, 	Q29, 	Q291_1, 	Q291_2, 	Q291_3, 	Q291_4, 	Q292_1, 	Q292_2, 	Q292_3, 	Q292_4, 	Q293_1, 	Q293_2, 	Q293_3, 	Q293_4, 	Q294_1, 	Q294_2, 	Q294_3, 	Q294_4, 	Q295_1, 	Q295_2, 	Q295_3, 	Q295_4, 	Q3, 	Q31, 	Q33, 	Q35, 	Q39, 	Q41, 	Q43, 	Q45, 	q457t_1, 	q457t_2, 	q457t_3, 	q457t_4, 	Q47, 	Q49, 	Q5, 	q5t_1, 	q5t_2, 	q5t_3, 	q5t_4, 	Q7, 	Q9, 	s2.ben, 	s3nt, 	SSins2, 	stratpk_1, 	stratpk_2, 	stratpk_3, 	V2, LocationLatitude,LocationLongitude,LocationAccuracy, Q216, Q218, Q139, Q133, IDS, saf_ck, Q195, Intro1, X4lobe, Q154))
+
+dim(ms3)
+ms$Q457
+names(ms3)
+
+# write.csv(ms3, "orderms3.csv") and sort into 05_impose order.csv using vlookup. Then open 05_impose order.csv and copy/paste in the order from the console
+
+o <- read.csv('05_impose order.csv', head = T)
+as.character(o$vars)
+ms4 <- ms3[,c("idnum", "Qual_ID", "cond_ms", "StartApr2015", "EndApr2015", "initials", "current_gr", "start_gr", "dob", "stratxp_oe", "vid", "vid_play", "vid_prob_oe", "image", "image_TEXT", "RC_ins", "ITI_amount", "ITI_change", "ITI_basic", "SM1_r", "SM2", "SM_scav", "tr_best", "tr_control", "tr_fair", "freq", "cnt_descr", "cnt_use", "cnt_imp", "cnt_burden", "cnt_ctrl", "cnt_auton", "rc_ap", "rc_rass", "rc_apsee", "rc_see", "MDR_ex", "read_days", "read_imp", "read_help", "read_ctrl", "read_auton", "org_descr", "org_freq", "org_imp", "org_waste", "org_ctrl", "org_auton", "org_fut", "sara_ex", "sara_days", "sara_helps", "sara_unhlp", "sara_ctrl", "sara_aut", "str_descr", "str_freq", "str_imp", "strl_burd", "str_ctrl", "str_auton", "SS_B1", "SS_B2", "SS_B3", "SS_F4", "SS_F7", "SS_A8", "SS_A9", "SS_A10", "SS_F6", "SS_A11", "SS_A12", "B_E1", "B_E2", "B_A1", "B_SP1", "B_SP2", "B_SP3", "B_SM4", "B_SM5", "B_SM6", "B_SM7r", "hrs_work", "anyelse", "wrong.id")]
+
+names(ms4)
+dim(ms4)
+ms4$Q154
+# overwrite ms4 into m
+ms <- ms4
+# moveme(df, c("b", "c"), "before", "e") 
+
+# reclass vars
+ms$dob <- as.character(ms$dob)
+
+```
+414 cases in the Mindset Intervention df (ms)
+
+## cleanup the idnumbers in the Spring 2015 intervention data
+
+### write in temp IDs for idnums that are NAs to avoid merging problems
+#### Drop cases that provided no data at all
+```{r}
+# View cases with no idnum
+subset(ms, is.na(idnum)) # they have no data and all but 1 were logged in for less than two minutes. One was logged in for over an hour. 
+
+# drop these cases with no idnums
+dim(ms) # 414 before the drop
+ms2 <- subset(ms, !is.na(idnum))
+dim(ms2) # 398 after dropping is.na(idnum)
+ms <- ms2 # overwrite the clean df upon the older df
+```
+398 cases in ms after dropping empty rows. 
+
+First create a df of intials and demographic identifiers
+```{r create a key of inittials and other identifying records called id}
+setwd("~/Box Sync/LD/10_LD_data_merging")
+init <- read.csv("03_Oct2014_Student_Initials_ID.csv", head = T)
+names(init)
+dim(init)
+init$idnum_clean <- init$Student_ID_Transform; init$Student_ID_Transform <- NULL
+init$initials <- init$Initials_CALC; init$Initials_CALC <- NULL
+
+setwd("~/Box Sync/LD/10_LD_data_merging/04_2013-14_LDstudentsData")
+dem <- read.csv("Student_Demographic_FINAL.csv", head = T)
+dim(dem)
+names(dem)
+dem$idnum_clean <- dem$StudentID; dem$StudentID <- NULL
+
+
+# merge your data
+id <- merge(dem, init, by = "idnum_clean", all = TRUE)
+dim(id)
+names(id)
+id$idnum_clean <- as.character(id$idnum_clean)
+id$Birthdate <- as.character(id$Birthdate) 
+
+
+
+
+# write.csv(id, "id_init_demo.csv")
+```
+
+## Populate ms$idnum_clean with trustworthy idnumbers
+### create ms$idnum_clean variable
+```{r mindset data cleanup}
+# convert idnum to a character to deal with text in responses
+ms$idnum <- as.character(ms$idnum) # this is the variable you will be cleaning
+ms$idnum_orig <- ms$idnum # for reference only
+
+# create idnum_clean to fill in with verified idnumbers
+ms$idnum_clean <- NA
+ms$idnum_clean <- as.character(ms$idnum_clean)
+```
+
+### Update 4 digit idnums with a zero at end
+```{r}
+# how many idnums < 5 characters
+dim(subset(ms, nchar(idnum) < 5)) # 38 < 5 digit idnumber
+
+# 36 4-digit idnumbers
+dim(subset(ms, nchar(idnum) == 4, select = idnum))
+
+# update 4-digit idnums with a zero on end 
+    # testing conversion
+    ms$idnum_temp <- ifelse(nchar(ms$idnum) == 4, 
+                            paste0(ms$idnum, "0"), 
+                            NA)
+    t <- subset(ms, !is.na(idnum_temp), select = c(idnum_temp, idnum, initials, dob)); t; dim(t)
+          # conversion looks good
+    # check against id key
+    m_t <- merge(t, id, by.x = "idnum_temp", by.y = "idnum_clean"); m_t
+    subset(m_t, select = c(dob, Birthdate)) # birthdates align
+    subset(m_t, select = c(initials.x, initials.y)) # initials align
+    
+    # update ms$idnum_clean with verified numbers in m_t
+    ## prep m_t for merging
+    sum(duplicated(m_t$idnum_temp)) # no dups
+    ## rename variables for merging
+    m_t$idnum_verified <- m_t$idnum_temp
+        ## reduce m_t to key variables: idnum and idnum_verified
+        m_t <- subset(m_t, select = c(idnum, idnum_verified)); dim(m_t) # 33
+    # check key var for duplicates
+    sum(duplicated(m_t$idnum)) # 0 dups
+    sum(duplicated(ms$idnum)) # 6 dups
+      # will any of the 6 dups in ms effect my merger? 
+      table(subset(ms, duplicated(idnum) == "TRUE") %in% m_t$idnum) # no effect
+    # create idnum_ck vars
+      ms$idnum_ck1 <- as.numeric(ms$idnum)
+      m_t$idnum_ck2 <- as.numeric(m_t$idnum)
+    # update ms$idnum_clean with verified numbers
+    ms_mergeCK <- merge(ms, m_t, by = "idnum", all = T)
+    dim(ms); dim(m_t)
+    dim(ms_mergeCK) # dim looks good
+    subset(ms_mergeCK, select = c(idnum, idnum_verified))
+    # check merger
+    table(ms_mergeCK$idcheck <- ms_mergeCK$idnum_ck2 - ms_mergeCK$idnum_ck1)
+    # overwrite dataframes
+    ms <- ms_mergeCK; ms_mergeCK <- NULL
+    # update master dataframe (ms)
+    ms$idnum_clean <- ifelse(!is.na(ms$idnum_verified), 
+                            ms$idnum_verified,
+                            ms$idnum_clean)
+    dim(subset(ms, !is.na(idnum_clean))) # confirms 33 idnum_clean values added
+
+# compare 4 digit idnum and idnum_temp
+subset(ms, !is.na(idnum_temp), select = c(idnum_temp, idnum))
+dim(subset(ms, !is.na(idnum_temp), select = c(idnum_temp, idnum)))
+  # overwrite idnums of 4 digits
+    describe(ms$idnum)
+    ms$idnum <- ifelse(nchar(ms$idnum) == 4, ms$idnum_temp, ms$idnum)
+# how many idnums < 5 characters
+dim(subset(ms, nchar(idnum) < 5)) # 2
+```
+33 clean idnums in ms now.
+
+### find and correct students who entered last name in idnum
+Just updating idnum and idnum_clean with this chunk
+```{r find and correct students who entered last name in idnum}
+# view idnums corrupted with names
+sort(ms$idnum)
+< "boiko19240" "Case78830"  "grimmer0"   "Judge20880" "kyle36870"  "smith25910"
+
+# check if initials make sense for name and idnumber and relabel idnum_clean accordingly
+    subset(id, idnum_clean == 19240, select = c(initials, Birthdate))
+    subset(ms, idnum == "boiko19240", select = c(initials, dob))
+    ms$idnum [ms$idnum == "boiko19240"] <- 19240
+    ms$idnum_clean <- ifelse(ms$idnum == "19240", ms$idnum, ms$idnum_clean)
+    
+    subset(id, idnum_clean == 78830, select = c(initials)) # not found 
+    subset(ms, idnum == 78830, select = c(initials, dob)) # not found, but no reason to doubt b/c no one else used this id in the intervention data. 
+    ms$idnum [ms$idnum == "Case78830"] <- 78830
+    ms$idnum_clean <- ifelse(ms$idnum == "78830", ms$idnum, ms$idnum_clean)
+
+    subset(id, idnum_clean == 20880, select = c(initials, Birthdate))
+    subset(ms, idnum == "Judge20880", select = c(initials, dob))
+    ms$idnum [ms$idnum == "Judge20880"] <- 20880
+    ms$idnum_clean <- ifelse(ms$idnum == "20880", ms$idnum, ms$idnum_clean)
+
+    subset(id, idnum_clean == 36870, select = c(initials, Birthdate))
+    subset(ms, idnum == "kyle36870", select = c(initials, dob))    
+    ms$idnum [ms$idnum == "kyle36870"] <- 36870
+    ms$idnum_clean <- ifelse(ms$idnum == "36870", ms$idnum, ms$idnum_clean)
+  
+    subset(id, idnum_clean == 25910, select = c(initials, Birthdate))
+    subset(ms, idnum == "smith25910", select = c(initials, dob))
+    ms$idnum [ms$idnum == "smith25910"] <- 25910
+    ms$idnum_clean <- ifelse(ms$idnum == "25910",  ms$idnum, ms$idnum_clean)
+  
+    subset(ms, idnum == "grimmer0", select = c(idnum,initials,current_gr,start_gr,dob)) # MBG
+    subset(id, initials == "MG") # matched on grade, and dob
+    ms$idnum [ms$idnum == "grimmer0"] <- 19500
+    ms$idnum_clean <- ifelse(ms$idnum == "19500",  ms$idnum, ms$idnum_clean)
+  
+sum(!is.na(ms$idnum_clean))
+```
+Now have 38 idnum cleans
+
+#### find and correct duplicate idnum entries
+```{r}
+sum(duplicated(ms$idnum)) # 8
+
+# create subset of duplicate idnums 
+subset(ms, duplicated(idnum) == "TRUE", select = c(idnum, initials))
+
+ms_dups <- subset(ms, duplicated(idnum) == "TRUE", select = c(idnum, initials, Qual_ID))
+
+# deal with duplicates
+i <- subset(ms, duplicated(idnum) == "TRUE")$idnum; i
+
+# remove appropriate rows
+    subset(ms, idnum == "18550")
+        # drop 2nd entry which had no data
+        ms <- subset(ms, Qual_ID != "R_2qrxvjz8mgCMqgD")
+    
+    subset(ms, idnum == "19600") 
+        # drop 2nd entry which had no data
+        ms <- subset(ms, Qual_ID != "R_3hfnvu14HLRGmcX")
+    
+    # 4 saw both conditions. What to do???
+    subset(ms, idnum == "19400") # seems to have taken both conditions
+        ms <- subset(ms, Qual_ID != "R_242WdS8eEG0ihgg") # dropping 1 row
+    subset(ms, idnum == "19340") # seems to have taken both conditions but left no other data. 
+        ms <- subset(ms, idnum != "19340") # dropping both data rows
+    subset(ms, idnum == "43250") # seems to have taken both conditions
+        ms <- subset(ms, Qual_ID != "R_1MYPt44HMZEIWza") # dropping 1 row
+    subset(ms, idnum == "36510") # seems to have taken both conditions
+        ms <- subset(ms, Qual_ID != "R_e2S3UBIft9mi37D") # dropping 1 row
+    subset(ms, idnum == "32940") # different P each time
+        # correct the idnum for 32940v1
+        ms$dob <- ifelse(ms$dob == "3/30/99", "03/30/1999", ms$dob)
+        subset(id, Birthdate == "03/30/1999")
+        ms$idnum <- ifelse(ms$idnum == "32940" & ms$initials == "CED", "32930", ms$idnum) #update idnum
+        ms$idnum_clean <- ifelse(ms$idnum == "32930", ms$idnum, ms$idnum_clean) # update idnum_clean
+        # correct th idnum for 32940v2
+        ms$dob <- ifelse(ms$dob == "5/10/01", "05/10/2001", ms$dob)
+        subset(id, Birthdate == "05/10/2001") # 32940 is correct idnum for this P
+        ms$idnum_clean <- ifelse(ms$idnum == "32940", ms$idnum, ms$idnum_clean) # update idnum_clean
+    subset(ms, idnum == "43440") # same P two times in same condition
+        ms <- subset(ms, Qual_ID != "R_7PP6mSwuTZtPzqh") # dropping 1 row without data
+# No duplicates left in ms data
+sum(duplicated(ms$idnum)) 
+
+
+dim(ms)
+sum(!is.na(ms$idnum_clean))
+```
+No more duplicate idnums, but 
+__ What to do about Ps who saw both conditions???
+Now have 39 cases and 40 clean ids
+
+```{r add a variable of abbreviated initials}
+# then apply the function
+substrLR <- function(x){ 
+  x = gsub("[.]", "", x) # remove periods
+  x = gsub("[ ]", "", x) # remove spaces
+  x = toupper(x)         # make all characters uppercase
+  L = substr(x, 1, 1)    # extract first character on left
+  R = substr(x, nchar(x), nchar(x)) # extract last character on right
+  c(paste0(L,R))         # paste first and last letters together for output
+  }
+
+ms$init_2L <- substrLR(ms$initials); ms$init_2L
+    # Change the one student who left his name in the initials section. 
+    ms$init_2L [ms$initials == "Max Ralston"] <- "MR"; ms$init_2L
+    ms$init_2L [ms$init_2L == "NANA"] <- NA; ms$init_2L
+    sum(is.na(ms$init_2L)) # 12 NAs
+```
+
+#### Subsets of claimed and unclaimed idnums
+```{r}
+# create a variable to indicate if a variable value has been claimed in another dataset
+ms$id_claimed <- 0
+id$id_avail <- 1
+
+# run this section to get a count of claimed idnumbers
+ms$id_claimed [!is.na(ms$idnum_clean)] <- 1
+
+# Claimed Count (cc) is the subset of claimed ids
+cc <- merge(subset(ms, select = c(idnum_clean, id_claimed)),
+            id, 
+            by = "idnum_clean"); dim(cc)
+
+# Unclaimed IDs (uc) are still available
+id$id_key <- 1 # dummy var for ids in school key
+ms$id_claimed [!is.na(ms$idnum_clean)] <- 1
+  # remove claimed idnumbers from uc
+  dim(id) # 448 cases in my key
+  dim(ms) # 391 cases in my intervention
+      # to be confirmed (tbc) idnumbers
+      ms$tbc_id <- 1 # by default all ids are tbc
+      ms$tbc_id [!is.na(ms$idnum_clean)] <- 0 # once a clean id is confirmed the id is no longer tbc
+  sum(ms$tbc_id) # 353 cases to be confirmed
+  
+# I want to see only the idnums in the key that are still available
+uc <- merge(subset(ms, tbc_id == 1,  # if the id is still to be confirmed
+                   select = c(idnum)),   # include that id
+                   id, by.x = "idnum", by.y = "idnum_clean",
+                    all = T); dim(uc) # includes all in key and all Ps to be confirmed
+uc <- subset(uc, id_key == 1); dim(uc); names(uc); dim(uc) # drop those who are not in the key and I get 448
+
+    table(is.na(ms$idnum_clean))
+
+# let's see who needs to be confirmed
+uc; dim(uc)
+# rename uc intials for merging comparisons
+uc$init_2L <- uc$initials; uc$initials <- NULL
+```
+
+#### run the intials clean-up function and confirm the low hanging fruit
+```{r}
+# confirm id numbers of Ps whose number and init_2L match the key
+ms_t <- subset(ms, is.na(idnum_clean), select = c(idnum, init_2L, dob))
+names(ms_t)
+names(uc)
+id_init_match <- merge(ms_t, uc, by = c("idnum", "init_2L")); dim(id_init_match)
+id_init_match$id_init_ck <- 1 # b/c everyone who made it into this df matched the key and the ms dataframe
+
+# how many dead-on matches? 312 of 391
+dim(ms_t) # 353
+dim(id_init_match) # 312
+dim(ms) # 391
+
+# How many clean idnums? 
+dim(subset(ms, !is.na(idnum_clean))) # 38
+```
+312 match dead-on for idnumbers and initials
+
+_x_ update ms and uc datasets to reflect these 316 matches
+```{r}
+# Before merging, confirm that there are no duplicates in your keyed variable, not even NAs. 
+    sum(duplicated(ms$idnum)) # 0 dups
+    sum(duplicated(id_init_match$idnum)) # 0 dups
+
+# merging
+ms2 <- (merge(ms, 
+          subset(id_init_match, select = c(idnum, id_init_ck)), # only includes those 312 who passed the match check for intials and idnumbers. 
+          by = "idnum", 
+          all = T)) # ensures that ms participants who are as yet unmatched are not dropped
+
+dim(ms2) #391 is consistent with dim(ms)
+
+# check to see if there are duplicates in your key variable
+sum(duplicated(ms2$idnum))  # no dups
+
+# update idnum_clean
+ms2$idnum_clean <- with(ms2, ifelse(!is.na(ms2$id_init_ck), ms2$idnum, NA))
+dim(subset(ms2, !is.na(idnum_clean))) # 312  
+
+# test for duplicates
+    ms_temp <- subset(ms2, !is.na(idnum_clean))
+    sum(duplicated(ms_temp$idnum_clean)) # 0 uplicates exlcuding NAs
+
+# overwrite ms with ms2
+ms <- ms2
+```
+
+```{r}
+# no non-NA dups
+sum(duplicated(subset(ms, !is.na(idnum_clean)))) # 0 dups
+describe(ms$idnum_clean)
+```
+Based on my tests, there is no reason to suspect that any idnumbers in April 2014 Mindset Intervention were inaccurate for the initials I am seeing. 
+
+Currently have 313 idnum_cleans in my ms data and 78 without idnum_cleans. 
+
+## try to figure out those without initials and idnumbers
+```{r}
+subset(ms, is.na(idnum_clean), select = c(idnum, initials, init_2L, dob, current_gr, start_gr))
+```
+
+### work on those with 5 digits in their idnum
+```{r}
+# list of Unclaimed IDs (uc) are still available
+## remove ms$idnum_clean from id
+ms$claimed <- 0
+ms$claimed [!is.na(ms$idnum_clean)] <- 1
+ms_claimed <- subset(ms, !is.na(idnum_clean), select = c(idnum_clean, claimed))
+
+# I want to see only the idnums in the key that are still available
+uc <- merge(ms_claimed, id, by = "idnum_clean", all = T); dim(uc) # 449 
+uc$claimed
+uc <- subset(uc, is.na(claimed)); dim(uc); names(uc) # this subset is the available idnumbers in the id dataframe
+head(uc)
+
+# current list of unclaimed ids
+uc
+
+# list of those who gave 5-digit idnum and have not been found yet. 
+ms5 <- subset(ms, is.na(idnum_clean) & nchar(idnum) == 5, select = c(idnum, initials, init_2L, dob, current_gr, start_gr)); ms5
+dim(ms5) # 39 
+
+sum(duplicated(ms5$idnum)) # 0 dups
+sum(duplicated(uc$idnum_clean)) # 0 dups
+
+ms5$dob <- as.character(ms5$dob)
+dim(subset(ms5, !is.na(dob))) # 30 of 39 have dobs
+sort(ms5$dob)
+
+ms5$dob[ms5$dob == "1/2/02"] <- "01/02/2002"  
+ms5$dob[ms5$dob == "11/12/95"] <- "11/12/1995"
+ms5$dob[ms5$dob == "1/26/99"] <- "01/26/1999"                           
+ms5$dob[ms5$dob == "12-Jan-00"] <- "01/12/2000"                             
+ms5$dob[ms5$dob == "2/11/98"] <- "02/11/1998"                
+ms5$dob[ms5$dob == "2/14/00"] <- "02/14/2000"               
+ms5$dob[ms5$dob == "2/19/98"] <- "02/19/1998"                              
+ms5$dob[ms5$dob == "24-Apr-97"] <- "04/24/1997"                           
+ms5$dob[ms5$dob == "30-Apr-89"] <- "04/30/1989"              
+ms5$dob[ms5$dob == "4/20/98"] <- "04/20/1998"                
+ms5$dob[ms5$dob == "5-Jun-98"] <- "06/05/1998"               
+ms5$dob[ms5$dob == "6/15/98"] <- "06/15/1998"               
+ms5$dob[ms5$dob == "6/5/99"] <- "06/05/1999"                 
+ms5$dob[ms5$dob == "7-15 2001"] <- "07/15/2001"              
+ms5$dob[ms5$dob == "8/2/01"] <- "08/02/2001"                 
+ms5$dob[ms5$dob == "9-Mar-98"] <- "03/09/1998"              
+ms5$dob[ms5$dob == "August 17,2001"] <- "08/17/2001"         
+ms5$dob[ms5$dob == "december 25 1999"] <- "12/25/1999"       
+ms5$dob[ms5$dob == "june 8,2000"] <- "06/08/2000"            
+ms5$dob[ms5$dob == "November 4 1999"] <- "11/04/1999"       
+ms5$dob[ms5$dob == "October 30th 2000"] <- "10/30/2000"      
+ms5$dob[ms5$dob == "September 27th, 1997"] <- "09/27/1997"  
+ms5$dob[ms5$dob == "12/19/00"] <-  "12/19/2000"
+ms5$dob[ms5$dob == "2/26/15"]  <- "02/26/????"
+ms5$dob[ms5$dob == "3-Dec-15"] <- "12/03/????" 
+ms5$dob[ms5$dob == "8/17/97"] <- "08/17/1997"
+ms5$dob[ms5$dob == "12/23/96"] <- "12/23/1996"
+
+subset(ms5, select = c(dob))
+
+# 24 matches
+temp <- merge(ms5, uc, by.x = "idnum", by.y = "idnum_clean")
+dim(temp)
+names(temp)
+subset(temp, select = c(idnum, init_2L, initials.y, dob, Birthdate))
+# 
+temp$grant_idnum_clean <- 1
+```
+22040, 36630, 43210 provided neither intials nor birthdate but matches an available idnumber. 
+All the rest match on idnum and dob. 
+So I will grant all of them their idnum as idnum_clean
+```{r}
+temp_merge <- subset(temp, select = c(idnum, grant_idnum_clean))
+dim(ms)
+dim(temp_merge)
+ms2 <- merge(ms, temp_merge, by = "idnum", all = T)
+dim(ms2) # all good on row and col counts
+
+describe(ms2$idnum_clean)
+ms2$grant_idnum_clean [is.na(ms2$grant_idnum_clean)] <- 0
+table(ms2$grant_idnum_clean)
+ms2$idnum_clean <- ifelse(ms2$grant_idnum_clean == 1, ms2$idnum, ms2$idnum_clean)
+describe(ms2$idnum_clean)
+
+ms2$grant_idnum_clean <- NULL
+names(ms2)
+ms <- ms2
+```
+Now have 337 of Ps ID'd and 54 NAs
+
+#### Look at those with less than 5 idnums provided
+```{r}
+# list of Unclaimed IDs (uc) are still available
+## remove ms$idnum_clean from id
+ms$claimed <- 0
+ms$claimed [!is.na(ms$idnum_clean)] <- 1
+ms_claimed <- subset(ms, !is.na(idnum_clean), select = c(idnum_clean, claimed))
+uc <- merge(ms_claimed, id, by = "idnum_clean", all = T)
+uc <- subset(uc, is.na(claimed)); dim(uc); names(uc) # this subset is the available idnumbers in the id dataframe
+head(uc); dim(uc) # 112 unclaimed ids
+uc$Birthdate <- as.character(uc$Birthdate)
+
+# list of those who gave less than 5-digit idnum and have not been found yet. 
+subset(ms, is.na(idnum_clean) & nchar(idnum) < 5, select = c(idnum, initials, init_2L, dob, current_gr, start_gr)) # 2
+
+subset(ms, idnum == "11")
+names(id)
+ms$dob <- ifelse(ms$idnum == "11", "11/31/1997", ms$dob)
+"11/31/1997" %in% uc$Birthdate # not present
+    # anyone in the key look like a match? 
+    subset(id, initials == "MM" & Current.Grade == "11") # 19770
+        # idnum 11 matches idnum 19770 on initials and Current Grade, but the birthdates don't match so I will not consider this a match.
+
+subset(ms, idnum == "41", select = c(dob))
+ms$dob <- ifelse(ms$idnum == "41", "08/11/1997", ms$dob)
+"08/11/1997"  %in% uc$Birthdate # present
+    # Compare to match
+    subset(uc, Birthdate == "08/11/1997")
+    subset(ms, idnum == "41", select = c(current_gr, init_2L))
+    # update id
+    ms$idnum_clean <- ifelse(ms$idnum == "41", "19950", ms$idnum_clean)
+    describe(ms$idnum_clean) # 369 and 21 NAs
+      
+
+# drop excess variables
+dim(ms)
+names(ms)
+ms <- subset(ms, select = -c(idnum_temp, idnum_ck1, idnum_verified, idnum_ck2, idcheck, claimed, id_init_ck, id_claimed, tbc_id))
+names(ms)
+ms <- moveme(ms, c("idnum_clean"), "before", "idnum")
+ms <- moveme(ms, c("init_2L"), "after", "initials")
+```
+
+#### Who is left to confirm? 
+```{r}
+describe(ms$idnum_clean) # 369      21 NAs
+
+# to be identified
+tbi <- subset(ms, is.na(idnum_clean)); dim(tbi) # 21 missing idnum_clean
+
+# merge based on dob if there are no duplicates
+sum(duplicated(tbi$dob)) # 5
+subset(tbi, select = c(idnum, dob, init_2L))
+sort(tbi$dob)       
+ms$dob <- ifelse(ms$dob == "12-Jan-00", "01/12/2000", ms$dob)    
+ms$dob <- ifelse(ms$dob == "12/14/01", "12/14/2001", ms$dob)       
+ms$dob <- ifelse(ms$dob == "15-Apr-98", "04/15/1998", ms$dob)      
+ms$dob <- ifelse(ms$dob == "18-May-99", "05/18/1999", ms$dob)     
+ms$dob <- ifelse(ms$dob == "2/19/98", "02/19/1998", ms$dob)       
+ms$dob <- ifelse(ms$dob == "2001", "??/??/2001", ms$dob)           
+ms$dob <- ifelse(ms$dob == "24-Apr-97", "04/24/1997", ms$dob)       
+ms$dob <- ifelse(ms$dob == "28-Nov-00", "11/28/2000", ms$dob)     
+ms$dob <- ifelse(ms$dob == "5-Jun-98", "06/05/1998", ms$dob)       
+ms$dob <- ifelse(ms$dob == "6/4/96", "06/04/1996", ms$dob)         
+ms$dob <- ifelse(ms$dob == "8/2/01", "08/02/2001", ms$dob)        
+ms$dob <- ifelse(ms$dob == "9-Mar-98", "03/09/1998", ms$dob)        
+ms$dob <- ifelse(ms$dob == "August 17,2001", "08/17/2001", ms$dob) 
+ms$dob <- ifelse(ms$dob == "November 4 1999", "11/04/1999", ms$dob)
+
+# recreate tbi with clean dobs
+tbi <- subset(ms, is.na(idnum_clean)); dim(tbi) # 21 missing idnum_clean
+dim(ms)
+names(id)
+
+id$id_avail <- NULL
+id$id_key <- NULL
+id$init_key <- id$initials; id$initials <- NULL
+id$claimed <- id$idnum_clean %in% ms$idnum_clean
+uc_ids <- subset(id, claimed == "FALSE")
+dim(uc_ids) # 79 unclaimed
+subset(tbi, select = c(idnum, dob, init_2L))
+uc_ids
+
+sum(duplicated(uc_ids$Birthdate)) # 0 dups
+sum(duplicated(tbi$dob)) # 5 dups
+    # Who are they
+    subset(tbi, duplicated(dob) == "TRUE")
+          # all unique IDs, none with survey data
+    # none of the duplicate birthdates match the key so go ahead with merge
+    temp <- merge(tbi, uc_ids, by.x = "dob", by.y = "Birthdate"); dim(temp)
+    temp$idnum
+    names(temp)
+    subset(temp, select = c("dob","idnum_clean.y", "idnum", "current_gr", "Current.Grade", "init_2L","init_key"))
+    # these 6 ids are sure matches based on dob, initials and grade
+    subset(temp, select = c(idnum, idnum_clean.y))
+    # upates idnum_clean in ms
+    describe(ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "28090", "38090", ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "78830", "38870", ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "366810", "36680", ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "27000", "22060", ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "25070", "21020", ms$idnum_clean)
+    ms$idnum_clean <- ifelse(ms$idnum == "32600", "36470", ms$idnum_clean)
+    > describe(ms$idnum_clean)
+>      n missing  unique 
+>    375      15     375 
+
+
+#Who are my 15 holdouts? 
+tbi <- subset(ms, is.na(idnum_clean), select = c(idnum, initials, current_gr, dob)); tbi
+
+id$claimed <- id$idnum_clean %in% ms$idnum_clean
+uc_ids <- subset(id, claimed == "FALSE", select = -c(Gender,Ethnicity,claimed))
+dim(uc_ids) # 73 unclaimed
+
+# are any tbi idnums among the uc_ids?
+table(tbi$idnum %in% uc_ids$idnum_clean) # all false
+
+# Look at subset of unidentified with more data
+    subset(tbi, !is.na(initials))
+    # 42680 LC  10 02/19/1998 is very close to 42860 02/18/1998 10  LC
+    ms$idnum_clean <- ifelse(ms$idnum == "42680", "42860", ms$idnum_clean)
+
+    # searching for 44870 JS 7 12/14/2001
+    uc_ids; subset(ms, is.na(idnum_clean) & !is.na(initials), select = c(idnum, initials, current_gr, dob))
+      subset(uc_ids, init_key == "JS") # nothing
+      sort(uc_ids$Birthdate); subset(uc_ids, Birthdate == "12/14/1998") # nope
+      # giving up on matching 44870
+
+    # 44980      BBB          9     01/12/2000
+    uc_ids; subset(ms, is.na(idnum_clean) & !is.na(initials), select = c(idnum, initials, current_gr, dob))
+    sort(uc_ids$Birthdate)
+    sort(uc_ids$init_key)
+    # giving up on matching 44980
+    
+    # I see nothing on which to match those below either
+        # 45040      AHW          9 11/04/1999
+        # 45080      HJH          7 08/17/2001
+        # 45150       wg          7 08/02/2001
+        # 45180      mod          7 ??/??/2001
+        # 45230      MPE         11 04/24/1997
+
+describe(ms$idnum_clean)
+```
+Finished with ms data cleaning
+> describe(ms$idnum_clean)
+>      n missing  unique 
+>    376      14     376 
+__ YOU WILL JUST NEED TO MAKE A DECISION ABOUT HOW TO TREAT IDNUM_CLEANS WITH NA WHEN YOU ANALYZE DATA
+
+## __ Make sure you didn't drop Ps who saw intervention, but didn't complete the survey, they may still show treatment effects!!!
+How should you handle them? 
+
+## MERGE MS DATA WITH EXISTING DATAFRAMES
+```{r review progress on merged file}
+# m is the current master merged file. 
+dim(m) 
+
+# variable order and naming clean before merger (time-stamping)
+names(m)
+    m <- moveme(m, c("Pattern"), "before", "Pattern1")
+    
+    m$startOct14 <- m$start_time; m$start_time <- NULL                                    
+    m$stopOct14 <- m$stop_time; m$stop_time <- NULL
+    m <- moveme(m, c("startOct14", "stopOct14"), "after", "initials")
+
+# idnum_clean will be your key variable for the merger
+describe(m$idnum_clean); class(m$idnum_clean)
+m$idnum_clean <- as.character(m$idnum_clean)
+sum(!is.na(m$Qual_ID)) # 417 took the survey is consistent with earlier figures. 
+sum(duplicated(m$Qual_ID)) # these 48 duplicated Qual_IDs are the NAs who I have data for, but did not take survey
+
+# ms data review
+describe(ms$idnum_clean); class(ms$idnum_clean) # 376 clean idnums and 14 NAs
+
+sum(is.na(ms$Qual_ID)) # the entire ms dataframe are survey takers 
+
+# update ms$idnum_clean for merger
+names(ms)
+t <- subset(ms, is.na(idnum_clean), select = c(idnum, initials, dob)); t
+    # all offered an idnum, it just didn't match my key. 
+    table(t$idnum %in% ms$idnum_clean)
+    # so let those be their idnum_cleans
+    ms2 <- ms
+    ms2$idnum_clean <- ifelse(is.na(ms2$idnum_clean), ms2$idnum, ms2$idnum_clean)
+describe(ms2$idnum_clean)
+    table(ms2$idnum_clean %in% ms$idnum_clean) # looks right
+    sum(duplicated(ms2$idnum_clean)) # no dups
+    ms <- ms2
+
+# begin the merge
+    # create temp ids for check
+    as.numeric(m$idnum_clean) -> m$idnum_ck1
+    as.numeric(ms$idnum_clean) -> ms$idnum_ck2
+    # run preliminary checks    
+    dim(m)
+    dim(ms)
+    sum(duplicated(m$idnum_clean)) # 0
+    sum(duplicated(ms$idnum_clean)) # 0 
+
+    # tag the ms data 
+    names(ms)[2:length(names(ms))] <- paste0(names(ms)[2:length(names(ms))], "_s15")
+    names(ms)
+
+    # MERGE
+    m2 <- merge(m, ms, by = "idnum_clean", all = T) 
+    dim(m2)
+    # check the merge
+    table(ms$idnum_clean %in% m$idnum_clean)
+    table(m$idnum_clean %in% ms$idnum_clean)
+        # 376 of my mindset Ps are in the m dataframe
+    sum(duplicated(m2$idnum_clean)) # 0 
+    table(m2$idnum_ck1 - m2$idnum_ck2) # 376 0s
+    summary(m2$idnum_clean) # 480 IDs total
+     
+
+# clean up the merge
+names(m2)
+# drop excess vars
+m2 <- subset(m2, select = -c(idnum_ck2_s15, idnum_ck1, wrong.id_s15))
+
+dim(m2)
+
+# NOTE: on 02.10.16 it seems that the above df m2 was never integrated in the following dfs. The name m2 was used again below in a different merger.
+
+# so on 02.10.16 I'm overwriting m2 as m so my code below remains intact
+m <- m2
+```
+Have 480 367
+  How many viable cases? 
+  
+```{r relabel levels of mindset manip from Spring 2015}
+names(m)
+# clean up mindset condition labels
+levels(m$cond_ms_s15)
+m$cond_ms_s15 <- as.character(m$cond_ms_s15)
+m$cond_ms_s15 [m$cond_ms_s15 == "Growth (~NP15S)"] <- "Growth"
+m$cond_ms_s15 <- as.factor(m$cond_ms_s15)
+```
+
+# IV. 2014-2015 Performance and Demographic Data (provided in June 2015)
+```{r}
+setwd("~/Box Sync/LD/10_LD_data_merging/06_2014-15_LDstudentsData")
+```
+
+## clean and cast wide the 2014-15 grades data
+```{r clean and cast wide the grades data}
+gr <- read.csv("Student_Academic_Final.csv", na.strings = "", head = T)
+  names(gr)
+  head(gr)
+
+  # rename variables
+  gr$gr_yr <- gr$Grade_In_School; gr$Grade_In_School <- NULL
+  gr$score <- gr$Grade; gr$Grade <- NULL
+  gr$idnum_clean <- as.character(gr$Student_ID_Transform); g$Student_ID_Transform <- NULL
+
+  # 20 course performance grades have no course name associated with them!!!
+  sum(is.na(gr$Course)); class(gr$Course)
+
+# Prepare grades data for merging
+  # paste course identyifing data into one variable course_yr_term
+  gr$Course2 <- gsub("[ ]", "_", gr$Course)
+  gr$Course2 <- gsub("[-]", "", gr$Course2)
+  gr$Course2 <- gsub("[__]", "_", gr$Course2)
+  gr$course_yr_trm <- paste(gr$Course2, "1415t", gr$Semester_Term, sep="")
+  gr$course_yr_trm <- tolower(gr$course_yr_trm)
+
+# Convert data from long to wide format using cast()
+  # create subset that drops nameless courses from data!!!
+  cp <- subset(gr, !is.na(Course))
+  dim(cp)
+  sum(is.na(cp$idnum_clean)) # 0 NAs
+
+  # view key variables
+  describe(cp$idnum_clean); length(unique(cp$idnum_clean)) # 282 unique IDs
+  summary(cp$course_yr_trm)
+  describe(cp$score)
+  
+  # create a subset of the variables you will transform to a wide dataset
+  cp2 <- subset(cp, select = c(idnum_clean, course_yr_trm, score))
+  dim(cp2)
+  head(cp2)
+
+# load packages
+library(reshape2)
+w <- dcast(cp2, idnum_clean ~ course_yr_trm,
+           value.var = "score",
+           fun.aggregate = mean, 
+           na.rm = TRUE)
+      # what is the effect of na.rm=T here???
+      # what is the effect of mean in fun.aggregate???
+
+# confirm expected number of variables and cases after casting
+  describe(cp$idnum_clean); dim(w) 
+  # 282 unique idnumbers is consistent across both functions 
+  describe(cp$course_yr_trm)
+  # 236 + 1 (for IDnum col)  matches describe(cp$course_yr_trm) values for unique course_yr_trm values
+
+# prep for merging with main dataframe
+dim(m)
+
+# tag the cp data 
+    names(cp)[2:length(names(cp))] <- paste0(names(cp)[2:length(names(cp))], "_1415")
+    names(cp)
+
+# test vars for merger
+w$testw <- as.numeric(w$idnum_clean)
+m$testm <- as.numeric(m$idnum_clean)
+
+m2 <- merge(m, w, by = "idnum_clean", all = TRUE); dim(m2) # 512
+
+m2$test <- m2$testw - m2$testm; table(m2$test) # 236 0s
+m2$test <- NULL; m2$testw <- NULL; m2$testm <- NULL
+
+# merger looks good, so overwrite
+m <- m2 # 
+dim(m)
+```
+
+## clean progress testing data
+```{r clean progress testing data}
+prog <- read.csv("Student_ProgressTesting_Final.csv", na.strings = "", head = T)
+    dim(prog); names(prog) # 450  24
+    # clean up names of vars
+    prog$Pattern1415 <- prog$Pattern_new; prog$Pattern_new <- NULL
+    prog$GORT_date1415 <- prog$GORT_TestDate_new; prog$GORT_TestDate_new <- NULL 
+    prog$idnum_clean <- as.numeric(prog$StudentID); prog$StudentID <- NULL
+      prog <- moveme(prog, c("idnum_clean"), "before", "DSM_1")
+    sum(is.na(prog$idnum_clean)) # 0 NAs
+    sum(duplicated(prog$idnum_clean)) # 2 duplicates
+        # Correct duplicates
+        subset(prog, duplicated(idnum_clean) == "TRUE", select = idnum_clean)
+            # 17590 drop the second entry after averaging his GORT scores
+            t <- subset(prog, idnum_clean == "17590"); t
+              # create new row averaging GORT scores
+              prog$GORT_RC <- ifelse(prog$idnum_clean == "17590", mean(t$GORT_RC), prog$GORT_RC)
+              prog$GORT_RR <- ifelse(prog$idnum_clean == "17590", mean(t$GORT_RR), prog$GORT_RR)  
+              # drop second entry for 17590
+              prog$idnum_clean <- ifelse(prog$idnum_clean == "17590" & prog$DSM_1 == 315.00, "17590drop", prog$idnum_clean)
+              prog <- subset(prog, idnum_clean != "17590drop")
+              dim(prog)
+            # 33420
+              t <- subset(prog, idnum_clean == "33420"); t
+              # 33420 has two sets of scores, keep the more recent WISC, and average GORTs
+              prog$GORT_RA <- ifelse(prog$idnum_clean == "33420", mean(t$GORT_RA), prog$GORT_RA)
+              prog$GORT_RC <- ifelse(prog$idnum_clean == "33420", mean(t$GORT_RC), prog$GORT_RC)
+              prog$GORT_RR <- ifelse(prog$idnum_clean == "33420", mean(t$GORT_RR), prog$GORT_RR) 
+              # drop second entry for 33420
+              prog$idnum_clean <- ifelse(prog$idnum_clean == "33420" & prog$PerceptualReasoning == 94, "33420drop", prog$idnum_clean)
+              prog <- subset(prog, idnum_clean != "33420drop")
+              dim(prog) # 448 24
+```
+
+```{r Sort by Pattern (~text-to-column)}
+
+library(splitstackshape)
+dim(prog)
+t <- subset(prog, select = c(idnum_clean, Pattern1415)); dim(t) # 466   2
+t2 <- cSplit(t, 'Pattern1415', sep=", ", type.convert=FALSE)
+names(t2) # no one had more than 6 Patterns
+
+i <- 1
+t2$Pattern1_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern1_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern1_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern1_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern1_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern1_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 2
+t2$Pattern2_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern2_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern2_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern2_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern2_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern2_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 3
+t2$Pattern3_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern3_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern3_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern3_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern3_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern3_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 4
+t2$Pattern4_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern4_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern4_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern4_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern4_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern4_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 5
+t2$Pattern5_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern5_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern5_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern5_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern5_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern5_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 6
+t2$Pattern6_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern6_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern6_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern6_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern6_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern6_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 7
+t2$Pattern7_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern7_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern7_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern7_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern7_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern7_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 8
+t2$Pattern8_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern8_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern8_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern8_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern8_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern8_1415 [t2$Pattern1415_6 == i] <- i
+
+i <- 9
+t2$Pattern9_1415 [t2$Pattern1415_1 == i] <- i
+t2$Pattern9_1415 [t2$Pattern1415_2 == i] <- i
+t2$Pattern9_1415 [t2$Pattern1415_3 == i] <- i
+t2$Pattern9_1415 [t2$Pattern1415_4 == i] <- i
+t2$Pattern9_1415 [t2$Pattern1415_5 == i] <- i
+t2$Pattern9_1415 [t2$Pattern1415_6 == i] <- i
+
+head(t2)
+describe(t2$Pattern1_1415)
+describe(t2$Pattern2_1415)
+describe(t2$Pattern3_1415)
+describe(t2$Pattern4_1415)
+describe(t2$Pattern5_1415)
+describe(t2$Pattern6_1415)
+describe(t2$Pattern7_1415)
+describe(t2$Pattern8_1415)
+describe(t2$Pattern9_1415)
+
+# Remove variables you don't want merged back in with the main dataset
+t2$Pattern1415_1 <- NULL
+t2$Pattern1415_2 <- NULL
+t2$Pattern1415_3 <- NULL
+t2$Pattern1415_4 <- NULL
+t2$Pattern1415_5 <- NULL
+t2$Pattern1415_6 <- NULL
+names(t2)
+
+class(t2)
+t2 <- data.frame(t2)
+dim(t2); colnames(t2); class(t2)
+```
+
+```{r merge with prog, the survey data with complete idnumbers}
+prog$testidm <- as.numeric(prog$idnum_clean)
+t2$testidt <- as.numeric(t2$idnum_clean)
+prog2 <- merge(prog, t2, by = "idnum_clean", all = TRUE); dim(m) # 
+  # test merger
+  prog2$test <- prog2$testidm - prog2$testidt; table(prog2$test)
+  prog2$test <- NULL; prog2$testidm <- NULL; prog2$testidt <- NULL
+  # check the merger
+  length(unique(prog2$idnum_clean)) # 
+  sum(duplicated(prog2$idnum_clean)) # 0
+  sum(is.na(prog2$idnum_clean)) # 0
+
+dim(prog2)  # 448  33
+names(prog2)
+
+# prep for merge
+    m$idnum_ck1 <- as.numeric(m$idnum_clean)
+    dim(m); sum(duplicated(m$idnum_clean))
+    
+    prog2$idnum_ck2 <- as.numeric(prog2$idnum_clean)
+    dim(prog2); sum(duplicated(prog2$idnum_clean))
+
+    # tag the prog data 
+    names(prog2)[2:length(names(prog2))] <- paste0(names(prog2)[2:length(names(prog2))], "_1415")
+    names(prog2)
+
+# merge
+    m2 <- merge(m, prog2, by = "idnum_clean", all = T)
+    dim(m2) # column counts are good, 13 new Ps entered my data
+    table(m2$idnum_ck1 - m2$idnum_ck2) # 435 0s
+
+m <- m2
+dim(m) # 525 549
+names(m)
+```
+
+```{r create composite variables from progress testing}
+# WISC IQ
+m$WISC_1415 <- apply(X = m[,c("WorkingMemory_1415", "VerbalComp_1415", "PerceptualReasoning_1415", "ProcessingSpeed_1415")], MARGIN =1, FUN = mean, na.rm = T)
+m <- moveme(m, c("WISC_1415"), "before", "WorkingMemory_1415")
+  label(m$WISC_1415) = "mean WISC (IQ) score from 2014-15 data" 
+  describe(m$WISC_1415)
+  hist(m$WISC_1415)
+
+# GORT
+m$gort_1415 <- apply(X = m[,c("GORT_RA_1415",  "GORT_RC_1415",  "GORT_RR_1415")], MARGIN =1, FUN = mean, na.rm = T)
+m <- moveme(m, c("gort_1415"), "before", "GORT_RA_1415")
+  label(m$gort_1415) = "mean GORT score from 2014-15 data" 
+  describe(m$gort_1415)
+  hist(m$gort_1415)
+```
+
+## clean demo data
+```{r clean demo data}
+dem <- read.csv("Student_Demographic_Final.csv", na.strings = "", head = T)
+    dim(dem); names(dem)   # 450 5
+    dem$idnum_clean <- as.character(dem$Student_ID); dem$StudentID <- NULL
+    sum(is.na(dem$idnum_clean)) # 0 NAs
+    sum(duplicated(dem$idnum_clean)) # 0 duplicates
+
+# begin merging
+  # temp IDs for testing the merge
+  m$test_id_m <- as.numeric(m$idnum_clean)
+  dem$test_id_dem <- as.numeric(dem$idnum_clean)
+
+    # tag the dem data 
+    names(dem)[2:length(names(dem))] <- paste0(names(dem)[2:length(names(dem))], "_1415")
+    names(dem)
+  # merge
+  m2 <- merge(m, dem, by = "idnum_clean", all = TRUE)
+  dim(m2) # 525
+      # test merge
+      m2$test <- m2$test_id_m - m2$test_id_dem; table(m2$test) # all zeroes confirms clean merge
+      # drop testing vars
+      m2$test <- NULL; m2$test_id_m <- NULL;  m2$test_id_dem <- NULL 
+  
+  # confirm no NAs or duplicates for idnum_clean
+  sum(is.na(m2$idnum_clean))
+  sum(duplicated(m2$idnum_clean)) # 0
+
+# overwrite m2 with m
+m <- m2
+dim(m) # 525 554
+names(m)
+```
+
+# V. October 2015 survey data
+```{r load Oct 2015 data}
+setwd("~/Box Sync/LD/10_LD_data_merging/07_Oct2015_LDsurvey")
+f2 <- read.csv('LD_Mindset_Oct2015_master.csv', head=T)
+dim(f2)
+names(f2) 
+
+# drop the timing variables
+f2 <- subset(f2, select = -c(Intro1, Q288_1,   Q288_2, 	Q288_3, 	Q288_4, 	Q219_1, 	Q219_2, 	Q219_3, 	Q219_4, 	Q221_1, 	Q221_2, 	Q221_3, 	Q221_4, 	Q222_1, 	Q222_2, 	Q222_3, 	Q222_4, 	Q223_1, 	Q223_2, 	Q223_3, 	Q223_4, 	Q224_1, 	Q224_2, 	Q224_3, 	Q224_4, 	Q226_1, 	Q226_2, 	Q226_3, 	Q226_4, 	Q225_1, 	Q225_2, 	Q225_3, 	Q225_4, 	Q174_1, 	Q174_2, 	Q174_3, 	Q174_4, 	Q173_1, 	Q173_2, 	Q173_3, 	Q173_4, 	Q175_1, 	Q175_2, 	Q175_3, 	Q175_4, 	Q271_1, 	Q271_2, 	Q271_3, 	Q227_1, 	Q227_2, 	Q227_3, 	Q227_4, 	Q265_1, 	Q265_2, 	Q265_3, 	Q265_4, 	Q266_1, 	Q266_2, 	Q266_3, 	Q266_4, 	Q267_1, 	Q267_2, 	Q267_3, 	Q267_4, 	Q268_1, 	Q268_2, 	Q268_3, 	Q268_4, 	Q269_1, 	Q269_2, 	Q269_3, 	Q269_4, 	Q270_1, 	Q270_2, 	Q270_3, 	Q270_4, 	Q271_1, 	Q271_2, 	Q271_3, 	Q271_4, 	Q272_1, 	Q272_2, 	Q272_3, 	Q272_4, 	Q273_1, 	Q273_2, 	Q273_3, 	Q273_4, 	Q274_1, 	Q274_2, 	Q274_3, 	Q274_4, 	Q291_1, 	Q291_2, 	Q291_3, 	Q291_4, 	Q275_1, 	Q275_2, 	Q275_3, 	Q275_4, 	Q276_1, 	Q276_2, 	Q276_3, 	Q276_4, 	Q278_1, 	Q278_2, 	Q278_3, 	Q278_4, 	Q280_1, 	Q280_2, 	Q280_3, 	Q280_4, 	Q292_1, 	Q292_2, 	Q292_3, 	Q292_4, 	Q281_1, 	Q281_2, 	Q281_3, 	Q281_4, 	Q282_1, 	Q282_2, 	Q282_3, 	Q282_4, 	Q283_1, 	Q283_2, 	Q283_3, 	Q283_4, 	Q284_1, 	Q284_2, 	Q284_3, 	Q284_4, 	Q293_1, 	Q293_2, 	Q293_3, 	Q293_4, 	Q286_1, 	Q286_2, 	Q286_3, 	Q286_4, 	Q294_1, 	Q294_2, 	Q294_3, 	Q294_4, 	Q295_1, 	Q295_2, 	Q295_3, 	Q295_4, LocationLatitude, LocationLongitude, LocationAccuracy))
+f2$IDS <- NULL # this is the vector of possible idnumbers
+dim(f2)
+
+# f2$idnum_clean <- NULL (not sure why this variable was dropped) 02.10.16
+f2$idnum_orig <- as.character(f2$idnum_orig)
+
+# do idnum_clean and idnum_orig match in this dataset? 
+dim(subset(f2, idnum_clean != idnum_orig, select = idnum_orig)) # 46 don't match
+sort(subset(f2, idnum_clean != idnum_orig, select = idnum_orig)$idnum_orig)
+
+# remove punctuation and letters from data
+f2$idnum <- gsub('[[:alpha:]]|[[:punct:]]','',f2$idnum_orig) #
+
+# add the 0 ot the end of 4 digit idnumbers so they'll match your key. 
+f2$idnum <- ifelse(nchar(f2$idnum) == 4, 
+                            paste0(f2$idnum, "0"), 
+                            f2$idnum)
+
+# review for odd length idnums
+sort(f2$idnum)
+  # !!! idnums to be sorted out!!!
+  subset(f2, idnum == 0, select = c(initials, current_gr, start_gr, dob))
+  subset(f2, idnum == 415, select = c(initials, current_gr, start_gr, dob))
+
+  describe(f2$idnum)
+  length(unique(f2$idnum)) # 328 cases, 324 unique, 0 NAs
+  sum(duplicated(f2$idnum)) # 4 dups
+  
+# Resolve these duplicates
+  subset(f2, duplicated(idnum) == T, select = idnum)
+  # these cases are being dropped b/c they are clearly logout errors
+  subset(f2, idnum == "42500")
+    f2$idnum [f2$idnum == "42500" & f2$initials == ""] <- "drop"
+  subset(f2, idnum == "45910")
+    f2$idnum [f2$idnum == "45910" & f2$initials == ""] <- "drop"
+  subset(f2, idnum == "19660")  
+    f2$idnum [f2$idnum == "19660" & f2$initials == "CMK" ] <- "19610"
+  subset(f2, idnum == "46580")  
+    f2$idnum [f2$idnum == "46580" & f2$initials == ""] <- "drop"
+
+# idnum_clean = 0 needs to be identified!!!
+subset(f2, idnum_clean == 0)
+
+# this person entered idnum orig of 415 and I can't identify them
+f2$idnum [f2$idnum == "41500" & f2$initials == "ahw" ] <- "drop"   
+    # no initials for AHW, AW initials already claimed by AJW
+
+# 4 rows need to be dropped, not just NA'd!!!
+names(f2)
+
+# view the three idnum variables
+subset(f2, select = c(idnum_clean, idnum_orig, idnum)))
+
+# drop those you've deemed droppable
+f <- subset(f2, idnum != "drop")
+
+f$Oct2015taker <- 1
+f$idnum_clean
+
+# I'm not sure who idnum_clean = 0 is so I'm dropping them for now. 
+f <- subset(f, idnum_clean != "0")
+
+# rename and drop dead vars
+names(f)
+f$Qual_ID_F15 <- f$V1; f$V1 <- NULL
+f$start <- f$V8
+f$stopped <- f$V9
+f <- subset(f, select = -c(V2, V3,  V4,	V5,	V6,	V7, V8, V9, V10, wrong.id))
+
+# label all data in f with year
+names(f)
+names(f)[2:length(names(f))] <- paste0(names(f)[2:length(names(f))], "_f15")
+```
+
+## merge f and m
+```{r}
+m2 <- merge(m,f, by = "idnum_clean", all = T)
+dim(m2)
+names(m2)
+
+m2 <- subset(m2, select = -c(Q271_1.1_f15:Q271_4.1_f15))
+
+# If m2 looks good, overwrite it as m
+names(m2)
+m <- m2
+```
+Every variable appears to be time stamped now. 
+
+## order your variables wisely
+```{r}
+# generate list of column or variable names without punctuation
+m[0,] 
+
+# Drop the excess variables
+m <- subset(m, select = -c(idnum_orig_f14:ins_clk_f14, GRins_f14, debrief_f14, dwnld_f14))
+
+m <- subset(m, select = -c(tempIDdup_check_f14))
+
+m <- subset(m, select = -c(test_id_dem_1314, test_id_prog_1314, idnum_s15, Qual_ID_s15, initials_s15, init_2L_s15, vid_s15, vid_play_s15, image_s15))
+
+m <- subset(m, select = -c(image_TEXT_s15, RC_ins_s15, idnum_orig_s15, idnum_ck2_1415, idnum_orig_f15, initials_f15, Qual_ID_F15_f15, Q216_f15, Q217_f15, Q218_f15, idnum_f15))    
+
+dim(m)
+
+# Create new variables for organizing
+m$BRK_______________DEMOGnPERFORMANCE_201314_DATA_______________BRK <- NA
+m$BRK_______________FALL2014_DATA_______________BRK <- NA
+m$BRK_______________SPRING2015MS_DATA_______________BRK <- NA
+m$BRK_______________DEMOGnPERFORMANCE_201415_DATA_______________BRK <- NA
+m$BRK_______________FALL2015_DATA_______________BRK <- NA
+
+
+m <- moveme(m, c("BRK_______________DEMOGnPERFORMANCE_201314_DATA_______________BRK"), "before", "Birthdate_1314") 
+m <- moveme(m, c("BRK_______________FALL2014_DATA_______________BRK"), "before", "B_E1_f14") 
+m <- moveme(m, c("BRK_______________SPRING2015MS_DATA_______________BRK"), "before", "cond_ms_s15")
+m <- moveme(m, c("BRK_______________DEMOGnPERFORMANCE_201415_DATA_______________BRK"), "before", "6th_elective_block1415t0")
+m <- moveme(m, c("BRK_______________FALL2015_DATA_______________BRK"), "before", "current_gr_f15")
+
+m[0,] 
+dim(m)
+
+m <- subset(m, select=c(idnum_clean,             
+                        BRK_______________DEMOGnPERFORMANCE_201314_DATA_______________BRK:Yearbook_1314t2, 
+                        BRK_______________FALL2014_DATA_______________BRK: howfeel_oe_f14,
+                        startOct14:stopOct14,
+                        BRK_______________SPRING2015MS_DATA_______________BRK: anyelse_s15, 
+                        BRK_______________DEMOGnPERFORMANCE_201415_DATA_______________BRK: Pattern9_1415_1415, 
+                        BRK_______________FALL2015_DATA_______________BRK: stopped_f15
+                        ))
+
+m[0,] 
+dim(m)
+```
+Dataframe m is now well organized with clear section breaks on data
+
+## Who missed the Fall 2015 survey? 
+```{r who missed Fall 2015 survey}
+# compare Fall 2015 survey takers to the master list of idnumbers. 
+setwd("~/Box Sync/LD/10_LD_data_merging")
+# Load the key you created of school provided initials and idnums
+IDinit <- read.csv('03_Oct2014_Student_Initials_ID.csv', head = T)
+dim(IDinit) # 448 students and initials
+# How many in my grades data? 
+setwd("~/Box Sync/LD/10_LD_data_merging/04_2013-14_LDstudentsData")
+dem <- read.csv("Student_Demographic_FINAL.csv", head = T); dim(dem) # 448
+names(dem)
+dem$idnum_clean <- dem$StudentID 
+dem$Grade1415 <- dem$Current.Grade
+
+  summary(duplicated(dem$idnum_clean)) # no duplicates in this dataframe
+  dem2 <- subset(dem, Grade1415 != 12); dim(dem2) # 394 now that seniors are gone
+dim(f) # so 70 students are missing off the bat due to graduation from HS
+
+# Now perform a vlookup across the two datasets
+setwd("~/Box Sync/LD/10_LD_data_merging")
+# write.csv(f, 'oct2015.csv')
+
+# merge subsets to see grades of survey nontakers for October 2015
+t = merge(f[, c("idnum_clean", "current_gr", "Oct2015taker")], 
+              dem2[, c("idnum_clean", "Grade1415")], 
+              all = T)
+dim(t)
+dim(f)
+dim(dem)
+head(t, 10)
+names(t)
+
+# subset of Ps in demographic data (graduates already removed) who are not in my survey data
+nontakers <- subset(t, is.na(Oct2015taker), select = c(idnum_clean, Grade1415))
+dim(nontakers) # 106 people in my demographic data did not take the survey. 
+table(nontakers$Grade1415)
+# the distribution is even across grades
+#write.csv(nontakers, 'nontakersOct2015.csv')
+
+# confirm how many are in the Fall 2015 dataset that weren't in old data. 
+```
+
+### Verify idnum_clean for cases whose intials and idnum match the key for Fall 2015 (f2)
+```{r verify initials and idnums}
+# visually review the initials
+subset(f2, select = c(idnum_orig, initials))
+
+    # visual inspection revealed long text responses from this P
+    subset(f2, idnum_orig == 39470)
+    # remove dob and initials for 39470
+    f2$initials [f2$idnum_orig == "39470"] <- NA
+    f2$dob [f2$idnum_orig == "39470"] <-  NA
+    # create var for 2 letter initials
+    f2$init_2L <- substrLR(f2$initials); f2$init_2L
+        f2$init_2L [f2$init_2L == "NANA"] <- NA
+        f2$init_2L [f2$init_2L == ""] <- NA
+
+
+names(id); names(f2)
+idt <- subset(id, select = c(idnum_clean, init_key))
+idt$idnum <- idt$idnum_clean; idt$idnum_clean <- NULL
+idt$init_2L <- idt$init_key; idt$init_key <- NULL
+names(idt)
+
+# create subset (t) of those who match on idnum and initials 
+t <- merge(subset(f2, select = c(idnum, init_2L)), idt, by = c("idnum", "init_2L")); dim(t) # t now holds all 266 Ps whose cleaned idnums and initials matched those found in the key.
+
+# create varible in f2 to indicate if case id in subset of matched initials and idnums
+f2$idnum_ver <- f2$idnum %in% t$idnum
+
+# update idnum_cleans for Ps with verified initials and idnums
+f2$idnum_clean <- NA
+f2$idnum_clean <- ifelse(f2$idnum_ver == "TRUE", f2$idnum, f2$idnum_clean)
+
+# Update the key (id) to indicate if idnum has been claimed in idnum_clean
+names(id)
+id$claimed <- 0
+id$claimed <- id$idnum_clean %in% f2$idnum_clean # indicates if id is claimed                 
+```
+
+### Birthdate conversion for October 2015 dataset (f2)
+```{r dob subset}
+# create a new subset of f2 Ps without an idnum_clean
+        f2$dob <- as.character(f2$dob)
+        f2$dob_orig <- f2$dob
+  
+    t <- subset(f2, is.na(idnum_clean), select = c(idnum, init_2L, initials, dob_orig, dob, current_gr))
+    sort(t$dob) 
+```
+
+```{r Parse your dobs by style they are written in} 
+# Parse your dobs by style they are written in:
+# ##/##/##
+t$dob_slash <- ifelse( grepl("/", t$dob) == "TRUE",  t$dob, NA)
+t$dob_day_mon_yr <-   ifelse( grepl("[[:alpha:]]", t$dob) == "TRUE",  t$dob, NA)
+t$dob_mon_day_yr <- ifelse( grepl("[[:alpha:]]", substr(t$dob, 1, 1)) == "TRUE", t$dob, NA) # tests if FIRST letter of vector element is letter
+  # remove t$dob_mon_day_yr cases from t$dob_day_mon_yr
+  t$dob_day_mon_yr <- ifelse(!is.na(t$dob_mon_day_yr), NA, t$dob_day_mon_yr)
+
+# write as a function called happy_birthday() !!!
+subset(t, !is.na(dob_slash), select = c(dob_slash))
+subset(t, !is.na(dob_day_mon_yr), select = c(dob_day_mon_yr))
+subset(t, !is.na(dob_mon_day_yr), select = c(dob_mon_day_yr))
+```
+
+```{r slash dates}
+# clean them up
+## dob_slash
+subset(t, !is.na(dob_slash), select = c(dob_slash))
+t <- cSplit(t, "dob_slash", sep = "/", type.convert = F)
+  # month
+  t$dob_slash_1 <- ifelse(nchar(t$dob_slash_1) == 1, paste0("0",t$dob_slash_1), t$dob_slash_1)
+  subset(t, !is.na(dob_slash_1), select = c(dob_slash_1)) # visual confirmation
+  t$month <- t$dob_slash_1; t$dob_slash_1 <- NULL
+  # day
+  subset(t, !is.na(dob_slash_2), select = c(dob_slash_2))
+  t$dob_slash_2 <- ifelse(nchar(t$dob_slash_2) == 1, paste0("0",t$dob_slash_2), t$dob_slash_2)
+  subset(t, !is.na(dob_slash_2), select = c(dob_slash_2)) # visual confirmation
+  t$day <- t$dob_slash_2; t$dob_slash_2 <- NULL
+  # yr
+  subset(t, !is.na(dob_slash_3), select = c(dob_slash_3))
+  t$dob_slash_3 <- ifelse(nchar(t$dob_slash_3) == 2 & t$dob_slash_3 < 15, paste0("20",t$dob_slash_3), t$dob_slash_3)
+  t$dob_slash_3 <- ifelse(nchar(t$dob_slash_3) == 2 & t$dob_slash_3 > 15, paste0("19",t$dob_slash_3), t$dob_slash_3)
+  subset(t, !is.na(dob_slash_3), select = c(dob_slash_3)) # visual confirmation
+  t$yr <- t$dob_slash_3; t$dob_slash_3 <- NULL
+
+  ### Paste together new bday var (dob_cln)
+    t$dob_cln <- NA
+    t$dob_cln <- with(t, paste(month, day, yr, sep = "/"))
+    t$dob_cln <- ifelse(t$dob_cln == "NA/NA/NA", NA, t$dob_cln)
+    describe(t$dob_cln) # added 26 clean birthdates to vector
+    #### drop excess vars
+    t <- subset(t, select = -c(month, day, yr)); names(t)
+```
+
+```{r day_mon_yr}
+## dob_day_mon_yr
+subset(t, !is.na(dob_day_mon_yr), select = c(dob_day_mon_yr))
+### make all seperators consistent within the vector elements
+  t <- cSplit(t, "dob_day_mon_yr", sep = "-", type.convert = F)
+  names(t)
+  # dob_day_mon_yr_1
+  subset(t, !is.na(dob_day_mon_yr_1), select = c(dob_day_mon_yr_1)) # visual confirmation
+  t$day <- t$dob_day_mon_yr_1; t$dob_day_mon_yr_1 <- NULL
+  t$day <- with(t, ifelse(nchar(day) == 1, paste0("0", day), day)) 
+  subset(t, !is.na(day), select = c(day)) # visual confirmation
+  # dob_day_mon_yr_2
+  subset(t, !is.na(dob_day_mon_yr_2), select = c(dob_day_mon_yr_2)) # visual confirmation
+  t$month <- tolower( # make all values lowercase
+    substr(t$dob_day_mon_yr_2, 1, 3)) # take only first three letters of values
+    t$dob_day_mon_yr_2 <- NULL
+      # create df of numbers and months
+      mo_num <- c("01","02","03","04","05","06","07","08","09","10","11","12")
+      month <- c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+      num_months <- data.frame(mo_num, month)
+  dim(t); names(t)
+  # add var to indicate num_months that you can drop
+  t$tp <- 1 # as in row represents a participant (p) in df (t)
+  t2 <- merge(t, num_months, by = "month", all = T); dim(t2)
+    # drop the months that were merged in without a participant to match
+      t2$tp # the NAs are months without participants
+      t2 <- subset(t2, !is.na(tp)); t2$tp
+  subset(t2, !is.na(month), select = c(month, mo_num)) # visual confirmation
+  t <- t2
+
+  # dob_day_mon_yr_3
+  subset(t, !is.na(dob_day_mon_yr_3), select = c(dob_day_mon_yr_3)) # visual confirmation
+  t$yr <- t$dob_day_mon_yr_3; t$dob_day_mon_yr_3 <- NULL
+  t$yr <- with(t, ifelse(yr > 16, paste0("19", yr), yr)) # must run this line... 
+  t$yr <- with(t, ifelse(yr < 16, paste0("20", yr), yr)) # ... before this line
+  subset(t, !is.na(yr), select = c(yr)); describe(t$yr) # visual confirmation
+
+  ### add to new bday var (dob_cln)
+    describe(t$dob_cln) # have 26 dob_cln before the upcoming paste
+    t$dob_cln <- ifelse(is.na(t$dob_cln), paste(t$mo_num, t$day, t$yr, sep = "/"), t$dob_cln)
+    t$dob_cln <- ifelse(t$dob_cln == "NA/NA/NA", NA, t$dob_cln)
+        describe(t$dob_cln) # have 44 dob_cln after the paste
+        subset(t, select = c(idnum, dob_cln, dob)) # visual inspection     
+    #### drop excess vars
+    t <- subset(t, select = -c(mo_num, month, day, yr)); names(t)
+```
+
+```{r mon_day_yr}
+subset(t, !is.na(dob_mon_day_yr), select = c(dob_mon_day_yr)) # visual confirmation
+
+# remove excess punctuation and spaces
+t$dob_mon_day_yr <- gsub(",", " ", t$dob_mon_day_yr)
+t$dob_mon_day_yr <- gsub("th", "", t$dob_mon_day_yr)
+t$dob_mon_day_yr <- gsub("  ", " ", t$dob_mon_day_yr)
+subset(t, !is.na(dob_mon_day_yr), select = c(dob_mon_day_yr)) # visual confirmation
+# text-to-col the dob
+t <- cSplit(t, "dob_mon_day_yr", sep = " ", type.convert = F); names(t)
+
+  # dob_mon_day_yr_1
+  subset(t, !is.na(dob_mon_day_yr_1), select = c(dob_mon_day_yr_1)) # visual confirmation
+  t$month <- tolower( # make all values lowercase
+                    substr(t$dob_mon_day_yr_1, 1, 3)) # take first three letters
+                    t$dob_mon_day_yr_1 <- NULL
+  # create df of numbers and months
+  mo_num <- c("01","02","03","04","05","06","07","08","09","10","11","12")
+  month <- c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+  num_months <- data.frame(mo_num, month)
+  dim(t); names(t)
+  t$tp <- 1 # as in row represents a participant (p) in df (t)
+  t2 <- merge(t, num_months, by = "month", all = T); dim(t2)
+  # drop the months that were merged in without a participant to match
+  t2$tp # the NAs are months without participants
+  t2 <- subset(t2, !is.na(tp)); t2$tp; dim(t2)
+  subset(t2, !is.na(month), select = c(month, mo_num)) # visual confirmation
+  t <- t2
+
+  # dob_mon_day_yr_2
+  subset(t, !is.na(dob_mon_day_yr_2), select = c(dob_mon_day_yr_2)) # visual confirmation
+  t$day <- t$dob_mon_day_yr_2; t$dob_mon_day_yr_2 <- NULL
+  t$day <- with(t, ifelse(nchar(day) == 1, paste0("0", day), day)) 
+  subset(t, !is.na(day), select = c(day)) # visual confirmation
+  
+  # dob_mon_day_yr_3
+  subset(t, !is.na(dob_mon_day_yr_3), select = c(dob_mon_day_yr_3)) # visual confirmation
+  t$yr <- t$dob_mon_day_yr_3; t$dob_mon_day_yr_3 <- NULL
+  subset(t, !is.na(yr), select = c(yr)) # visual confirmation
+
+  ### add to new bday var (dob_cln)
+    describe(t$dob_cln) # have 44 dob_cln before the upcoming paste
+    t$dob_cln <- ifelse(is.na(t$dob_cln), paste(t$mo_num, t$day, t$yr, sep = "/"), t$dob_cln)
+    t$dob_cln <- ifelse(t$dob_cln == "NA/NA/NA", NA, t$dob_cln)
+        t$dob_cln # visual inspection
+        describe(t$dob_cln) # have 52 dob_cln after the paste
+    #### drop excess vars
+    t <- subset(t, select = -c(month, day, yr, tp, mo_num)); names(t)
+    dim(t)
+```
+of the 60 Ps without an idnum_clean 52 now have clean dob
+See who you can match among those 52 Ps to the key
+```{r See who you can match among those 52 Ps to the key} 
+names(id)
+idt <- subset(id, claimed == "FALSE")
+
+sum(duplicated(idt$Birthdate)) # 12 dups
+
+# create var indicating which unconfirmed Ps in your data among the unclaimed in the key
+t$id_verif <- t$dob_cln %in% idt$Birthdate
+# create var indicating which unclaimed in the key are among the unconfirmed Ps in your data 
+idt$id_verif <- idt$Birthdate  %in%  t$dob_cln
+
+    # view those subsets of matches
+    t_t <- subset(t, id_verif == T, select = c(idnum, init_2L, current_gr, dob_cln))
+    sum(duplicated(t_t$dob_clean))
+
+    idt_t <- subset(idt, id_verif == T, select = c(idnum_clean, init_key, Current.Grade, Birthdate))
+
+    # check for dups in key var b4 merging
+    sum(duplicated(idt_t$Birthdate)) # 2 dups
+    subset(idt_t, duplicated(Birthdate) == T) # 01/03/2001
+    subset(idt_t, Birthdate == "01/03/2001")
+      # who do they match in t_t
+      subset(t_t, dob_cln == "01/03/2001")
+      subset(idt, idnum_clean == "38430")
+      # so 38430 is confirmed by idnum and birthdate
+      # update f2$idnum_clean
+      describe(f2$idnum_clean)
+      f2$idnum_clean <- with(f2, ifelse(idnum == "38430", idnum, idnum_clean))
+      describe(f2$idnum_clean)
+      # update idt and id$claimed
+      id$claimed <- id$idnum_clean %in% f2$idnum_clean # indicates if id is claimed                 
+      idt <- subset(id, claimed == F); dim(idt) # 181 unclaimed
+      # update t_t
+      names(t_t); dim(t_t)
+      t_t <- subset(t_t, idnum != "38430")
+
+idt$dob_cln <- idt$Birthdate
+idt_t <- subset(idt, select = c(dob_cln, idnum_clean, Current.Grade, init_key))
+# update Current.Grade for this year by adding 1
+idt_t$Current.Grade <- idt_t$Current.Grade + 1
+
+sum(duplicated(t_t$dob_cln)) # 0 dups
+sum(duplicated(idt_t$dob_cln)) # 11 dups
+    # do any of these dups create conflicts? 
+    sum(duplicated(idt_t$dob_cln)) # 11 dup dobs among unclaimed cases in key
+    sum(subset(idt_t, duplicated(dob_cln) == T)$dob_cln %in% t_t$dob_cln) # but none are in t_t
+    # proceed with merger
+    temp <- merge(t_t, idt_t, by = "dob_cln", all.x = T)
+    dim(t_t); dim(temp) # all t_t were maintained
+
+temp$init_ck <- temp$init_2L == temp$init_key
+temp$id_ck <- temp$idnum == temp$idnum_clean
+temp$gr_ck <- temp$current_gr == temp$Current.Grade
+temp
+
+# verified idnum_clns
+## these people match on dob and idnum; that's a sure match
+temp$id_verif <- with(temp, ifelse(id_ck == T, idnum, NA))
+subset(temp, !is.na(id_verif))
+      describe(f2$idnum_clean) # n = 269  59 NAs but there are 2 dups
+          #subset(f2, duplicated(idnum_clean) == T)$idnum_clean  # 42500 & 19660
+          # subset(f2, idnum_clean == "42500")
+          #f2 <- subset(f2, V1 != "R_1DA75zGJrRA3sWo")# dropping empty row for 42500
+      f2$idnum_verified <- f2$idnum %in% temp$id_verif
+      describe(f2$idnum_verified) # 17 matches
+      f2$idnum_clean <- with(f2, ifelse(is.na(idnum_clean) & idnum_verified == T, idnum, idnum_clean))
+      describe(f2$idnum_clean) # n = 286, an increase of 17
+
+## these people match on dob, initials, & grade; that's a sure match
+temp$init_verif <- with(temp, ifelse(init_ck == T, idnum_clean, NA))
+subset(temp, !is.na(init_verif))
+      describe(f2$idnum_clean) # n = 269      59 NAs
+      f2$idnum_verified <- f2$idnum %in% temp$id_verif
+      describe(f2$idnum_verified) # 17 matches
+      f2$idnum_clean <- with(f2, ifelse(is.na(idnum_clean) & idnum_verified == T, idnum, idnum_clean))
+      describe(f2$idnum_clean) # n = 286, an increase of 17
+
+
+
+
+
+
+## who's left of the dob matches?
+temp$judg_verif <- NA
+subset(temp, is.na(id_verif) & is.na(init_verif))
+# 38430 # only matches on dob; unidentifiable!!! test against newer grades data
+temp$judg_verif <- with(temp, ifelse(idnum == "24900", "42490", temp$judg_verif)) # id only off by 1
+# 45210 # only matches on dob; unidentifiable!!! test against newer grades data
+# 39430 # only matches on dob; unidentifiable!!! test against newer grades data
+
+# update the temp$idnum_clean
+describe(temp$idnum_clean)
+temp$idnum_clean <- with(temp, ifelse(!is.na(id_verif), id_verif, idnum_clean))
+temp$idnum_clean <- with(temp, ifelse(!is.na(init_verif), init_verif, idnum_clean))
+temp$idnum_clean <- with(temp, ifelse(!is.na(judg_verif), judg_verif, idnum_clean))
+
+# update your master data file
+    temp$idnum_clean %in% f2$idnum_clean # none of these idnum cleans were in already in f2.
+    temp_fm <- subset(temp, !is.na(idnum_clean), select = c(idnum, idnum_clean))
+    sum(duplicated(temp_fm$idnum)) #2
+    subset(temp_fm, duplicated(idnum) == T) # 38430
+      # how many times is 38430 in your data? once!
+      subset(f2, idnum == "38430", select = dob)
+      # you need to pick who 38430 really is? 
+
+```
+
+### Update Oct2015 data for student withdrawals
+```{r}
+setwd("~/Box Sync/LD/10_LD_data_merging/07_Oct2015_LDsurvey")
+ms <- read.csv('nontakersOct2015_TL.csv', head = T)
+dim(ms)
+names(ms)
+ms$withdrewBy2015 <- NA
+ms$withdrewBy2015 [ms$Withdrawn. == "Y"] <- 1
+    ms$Withdrawn. <- NULL
+summary(ms$withdrewBy2015)
+
+summary(ms$Absent.) 
+ms$absentOct2015 <- NA
+ms$absentOct2015 [ms$Absent. == "Y" | ms$Absent. == "A" | ms$Absent. == "ALL DAY"] <- 1
+summary(ms$absentOct2015); table(ms$absentOct2015)
+ms$Absent. <- NULL
+
+ms$SrAlreadyTookEcon == NA
+ms$SrAlreadyTookEcon [ms$Senior...Already.took.Economics == "Y"] <- "Y"
+ms$SrAlreadyTookEcon [ms$Senior...Already.took.Economics == "N"] <- "N"
+ms$SrAlreadyTookEcon
+ms$Senior...Already.took.Economics <- NULL
+
+ms$Grade1415 <- NULL
+ms$Grade1516 <- NULL
+
+# dataset ms is ready for merging with master data
+names(ms)
+```
+###!!!So this chunk ends and I have a list of withdrawn students to drop, but not yet a sense of how to drop them!!!
+
+# VI. Fall 2015 Performance data
+```{r Load Fall 2015 performance data}
+setwd("~/Box Sync/LD/10_LD_data_merging/08_Fall_2015 Performance Data")
+
+gort_f1516 <- read.csv("08_GORT_Fall1516.csv", 
+               na.strings = "", # ensures empty cells of factor and character variables are read as NAs not "". 
+               stringsAsFactors=FALSE,  # helps in some field data
+               head = T) 
+
+grades_f1516 <- read.csv("08_gradesFall1516.csv", head = T) 
+
+# clean up the new data
+names(gort_f1516)
+    # rename StudentID_Transform as idnum clean, but this is temporary!!! It's not been vetted !!!
+    gort_f1516$idnum_clean <- gort_f1516$StudentID_Transform; gort_f1516$StudentID_Transform <- NULL
+    gort_f1516 <- moveme(gort_f1516, c("idnum_clean"), "first")
+    # dropping lots of variables for short-term test
+    gort_f1516 <- subset(gort_f1516, select = -c(Pattern, DSM_1:WISC_ProcessingSpeed))
+    # suffix label all yor variables
+    names(gort_f1516)[2:length(names(gort_f1516))] <- paste0(names(gort_f1516)[2:length(names(gort_f1516))], "_f1516")
+
+# merge into m
+names(m)
+names(gort_f1516)
+m2 <- merge(m, gort_f1516, by = c("idnum_clean"), all = T)
+
+dim(m)
+dim(gort_f1516)
+dim(m2)
+m <- m2
+
+# merge in the grades data now
+# clean up the new data
+names(grades_f1516)
+    # rename StudentID_Transform as idnum clean, but this is temporary!!! It's not been vetted !!!
+    grades_f1516$idnum_clean <- grades_f1516$Student_ID_Transform; grades_f1516$Student_ID_Transform <- NULL
+    grades_f1516 <- moveme(grades_f1516, "idnum_clean", "first")
+    
+
+# transform long grades data
+sum(is.na(grades_f1516$Course)) # 0 
+
+# Prepare grades data for merging
+# paste course identyifing data into one variable course_yr_term
+    grades_f1516$Course2 <- gsub("[ ]", "_", grades_f1516$Course)
+    grades_f1516$course_yr_trm <- paste(grades_f1516$Course2, "_1516t", grades_f1516$Semester_Term, sep="")
+    grades_f1516$course_yr_trm <- gsub("[:]", "", grades_f1516$course_yr_trm)
+
+# rename performance variable
+grades_f1516$score <- grades_f1516$Grade; grades_f1516$Grade <- NULL
+
+# Convert data from long to wide format using cast()
+  # create subset that drops nameless courses from data
+  cp <- subset(grades_f1516, !is.na(Course))
+  dim(cp) # 3083
+  sum(is.na(cp$idnum_clean)) # 0 NAs
+
+  # view key variables
+  describe(cp$idnum_clean); length(unique(cp$idnum_clean)) # 472 unique IDs
+  summary(cp$course_yr_trm)
+  describe(cp$score)
+  
+  # create a subset of the variables you will transform to a wide dataset
+  cp2 <- subset(cp, select = c(idnum_clean, course_yr_trm, score))
+  dim(cp2)
+  head(cp2)
+
+# load packages
+library(reshape2)
+w <- dcast(cp2, idnum_clean ~ course_yr_trm,
+           value.var = "score",
+           fun.aggregate = mean, 
+           na.rm = TRUE)
+      # what is the effect of na.rm=T here???
+      # what is the effect of mean in fun.aggregate???
+      # how can I confirm if any data were lost???
+
+dim(w) 
+  # 472 unique idnumber matches the number of unique IDs in  describe(cp$idnum_clean)
+  # 167 + 1 (ID col) columns matches describe(cp$course_yr_trm) values for unique course_yr_trm values
+# test <- write.csv(w, 'test.csv') 
+
+# merge in these grades with your data
+m2 <- merge(m, w, by = "idnum_clean", all.x = T)
+dim(m); dim(w); dim(m2)
+d <- m2
+```
+# VIII. April 2016 Survey Data
+
+```{r load april 2016 data}
+setwd("~/Box Sync/LD/10_LD_data_merging")
+
+# bring your custom functions in
+source("00_LDMS_data_prep_package.R")
+
+# load the spring survey 2016 (ss16)
+t <- read.csv("09_Apr2016survey/09.1_LD_Mindset_04.29.16.csv", 
+              na.strings = "", 
+              stringsAsFactors=FALSE, 
+              head = T) 
+
+dim(t)
+str(t)
+
+t_desc <- t[1,] # save description row
+t <- t[-1,] # get rid of description row
+
+# rename your rownames b/c you dropped a row
+  rownames(t) <- seq(length=nrow(t))
+  
+# Fix up any other weird things in the data here
+t <- smart_cast_numeric(t)
+class(t)
+# d_desc["item_name"]
+
+names(t)
+
+t$Qual_ID <- t$V1; V1 <- NULL
+
+t <- moveme(t, "Qual_ID", "first")
+```
+
+```{r drop your timing variables}
+# display sorted names so you can ID the timing variables
+sort(names(t))
+
+t <- subset(t, select = -c(
+  mp3tm_1, mp3tm_2, 
+  mp3tm_3, mp3tm_4, 
+  Q112_1, Q112_2, 
+  Q112_3, Q112_4, 
+  Q113_1, Q113_2, 
+  Q113_3, Q113_4, 
+  Q114_1, Q114_2, 
+  Q114_3, Q114_4, 
+  Q115_1, Q115_2, 
+  Q115_3, Q115_4, 
+  Q116_1, Q116_2, 
+  Q116_3, Q116_4, 
+  Q118_1, Q118_2, 
+  Q118_3, Q118_4, 
+  Q120_1, Q120_2, 
+  Q120_3, Q120_4, 
+  Q173_1, Q173_2, 
+  Q173_3, Q173_4, 
+  Q174_1, Q174_2, 
+  Q174_3, Q174_4, 
+  Q175_1, Q175_2, 
+  Q175_3, Q175_4, 
+  Q216, Q217))
+
+t <- subset(t, select = -c(
+  Q218, Q219_1, 
+  Q219_2, Q219_3, 
+  Q219_4, Q221_1, 
+  Q221_2, Q221_3, 
+  Q221_4, Q222_1, 
+  Q222_2, Q222_3, 
+  Q222_4, Q223_1, 
+  Q223_2, Q223_3, 
+  Q223_4, Q224_1, 
+  Q224_2, Q224_3, 
+  Q224_4, Q225_1, 
+  Q225_2, Q225_3, 
+  Q225_4, Q226_1, 
+  Q226_2, Q226_3, 
+  Q226_4, Q227_1, 
+  Q227_2, Q227_3, 
+  Q227_4, Q265_1, 
+  Q265_2, Q265_3, 
+  Q265_4, Q266_1, 
+  Q266_2, Q266_3, 
+  Q266_4, Q267_1, 
+  Q267_2, Q267_3, 
+  Q267_4, Q268_1, 
+  Q268_2, Q268_3, 
+  Q268_4, Q269_1))
+
+t <- subset(t, select = -c(
+  Q269_2, Q269_3, 
+  Q269_4, Q270_1, 
+  Q270_2, Q270_3, 
+  Q270_4, Q271_1, 
+  Q271_1.1, Q271_2, 
+  Q271_2.1, Q271_3, 
+  Q271_3.1, Q271_4, 
+  Q271_4.1, Q272_1, 
+  Q272_2, Q272_3, 
+  Q272_4, Q273_1, 
+  Q273_2, Q273_3, 
+  Q273_4, Q274_1, 
+  Q274_2, Q274_3, 
+  Q274_4, Q275_1, 
+  Q275_2, Q275_3, 
+  Q275_4, Q276_1, 
+  Q276_2, Q276_3, 
+  Q276_4, Q278_1, 
+  Q278_2, Q278_3, 
+  Q278_4, Q280_1, 
+  Q280_2, Q280_3, 
+  Q280_4, Q281_1, 
+  Q281_2, Q281_3, 
+  Q281_4, Q282_1, 
+  Q282_2, Q282_3, 
+  Q282_4, Q283_1, 
+  Q283_2, Q283_3, 
+  Q283_4, Q284_1, 
+  Q284_2, Q284_3, 
+  Q284_4, Q286_1))
+
+t <- subset(t, select = -c(
+  Q286_2, Q286_3, 
+  Q286_4, Q288_1, 
+  Q288_2, Q288_3, 
+  Q288_4, Q291_1, 
+  Q291_2, Q291_3, 
+  Q291_4, Q292_1, 
+  Q292_2, Q292_3, 
+  Q292_4, Q293_1, 
+  Q293_2, Q293_3, 
+  Q293_4, Q294_1, 
+  Q294_2, Q294_3, 
+  Q294_4 
+  ))
+
+# drop other variables
+names(t) %>% noquote()
+
+t <- subset(t, select = -c(V1:V7, IDS, Intro1))
+
+t <- subset(t, select = -c(LocationLatitude, LocationLongitude, LocationAccuracy, X, V8, V9, V10))
+```
+
+### clean up april 2016 survey idnumbers
+```{r clean up april 2016 survey idnumbers}
+# sort idnums to display idnums corrupted with text
+sort(t$idnum)
+
+# save an original copy of idnumbers
+t$idnum.orig <- t$idnum
+
+# repair ids with text in them
+class(t$idnum)
+t$idnum [t$idnum == "__________19240"] <-  "19240"      
+t$idnum [t$idnum == "__________42600"] <- "42600"          
+t$idnum [t$idnum == "__________33260"] <- "33260"           
+t$idnum [t$idnum == "__________1950"] <- "19500"                        
+t$idnum [t$idnum == "__________5401"] <- "54010" 
+t$idnum [t$idnum == "__________4443"] <- "44430"          
+t$idnum [t$idnum == "__________0"] <- NA   
+t$idnum [t$idnum == "__________16"] <- NA
+
+# add a 0 to 4-digit idnumbers
+t$idnum <- ifelse(nchar(t$idnum) == 4, paste(t$idnum, 0, sep = ""), t$idnum)
+
+# test if variable contains any letters of alphabet
+t$idnum %>% grepl('^[A-Za-z]+$', .) %>% table
+      # means check from the start (^) to end (+$) 
+      # of string if strong contains A-Z (caps) or a-z (lowercase) 
+      # and return TRUE/FALSE. 
+
+# display if variable contains only numbers --> discovery of one more case with invalid ID number. 
+t %>% subset( grepl('^[0-9]+$', idnum) == FALSE, select = idnum)
+    # reveals row 52 wrote "4#'s0" for his idnumber
+    t[51,] # has intials MEB, dob 03/21/02, grade 8. Find him in the school records!!!
+
+# reclassify cleaned ids as numeric
+t$idnum <- as.numeric(t$idnum)
+```
+
+## Confirm ID numbers entered by students against a school-provided key
+### How many cases are we starting with? (418)
+```{r}
+names(t)
+t <- moveme(t, "idnum.orig", "after", "idnum")
+
+# reclass idnum and initials as character vars
+class(t$idnum)
+t$idnum <- as.character(t$idnum)
+class(t$initials)
+
+dim(t)
+```
+
+### load a school-provided key 
+```{r load Spring 2016 grades data}
+# load the Spring 2016 grades data
+s <- read.csv("10_Spring_2016_grades/ld_spr_2016_grades.csv", 
+              na.strings = "", 
+              stringsAsFactors=FALSE, 
+              head = T) 
+
+s_desc <- s[1,] # save description row
+s <- s[-1,] # get rid of description row
+
+# rename your rownames b/c you dropped a row
+  rownames(s) <- seq(length=nrow(s))
+  
+# Fix up any other weird things in the data here
+s <- smart_cast_numeric(s)
+class(s)
+# d_desc["item_name"]
+
+names(s)
+```
+
+```{r resolve survey IDs that don't match School provided grades}
+# identify a school-provided key of legit IDnumbers from the Spring 2016 grades
+s$Student_ID_Transform
+
+# Check IDs for duplicates
+subset(t, duplicated(idnum) == TRUE, select = idnum)
+
+# Correct your duplicate cases: 
+subset(t, idnum == '18640') # 2 different people
+  # per 03_Oct2014_Student_Initials_ID, 18640 has initials JC, which matches 2nd row
+  # 33160, 33180, 18780 have AG initials When you find your school provided dob's you can ID her. Temporarily drop!!!
+  t <- subset(t, Qual_ID != 'R_XmSbBh99wkiDalH') 
+subset(t, idnum == '32960') # 1 person, 2nd entry is blank
+  t <- subset(t, Qual_ID != "R_suRUlDN55d5imgV") # drop blank row
+subset(t, idnum == '40040') # same initials & dob, second row is blank
+  t <- subset(t, Qual_ID != "R_2B4dlASyv5bSfAT") # drop blank row
+subset(t, idnum == '33120') # second row is blank
+  t <- subset(t, Qual_ID != "R_6wW7VAfvwrXjB29") # drop blank row
+  
+t <- subset(t, !is.na(idnum)) # Drop your NA IDs temporarily!!!
+
+dim(t) # so now I have 285 clean Ps from the Spring 2016 survey
+``` 
+
+### merge t with d
+```{r}
+names(t)
+t <- moveme(t, 'idnum', 'before', 'Qual_ID')
+names(t)[2:length(names(t))] <- paste0(names(t)[2:length(names(t))], "_s16") # 2: means to start with the second name
+
+names(t)
+names(d)
+
+class(d$idnum_clean)
+class(t$idnum)
+
+t$idnum %>% duplicated %>% table
+d$idnum_clean %>% duplicated %>% table
+```
+
+#### temp resolve 16 duplicates in d !!!
+```{r}
+subset(d, duplicated(idnum_clean) == TRUE, select = idnum_clean)
+d <- subset(d, !is.na(idnum)) # Drop your NA IDs temporarily!!!
+
+# may be caused by multiple tests in some cases
+subset(d, idnum_clean == '19590') # all info is redundant --> drop second row
+subset(d, idnum_clean == '19610') # all info is redundant --> drop second row
+subset(d, idnum_clean == '19660') # check closer
+subset(d, idnum_clean == '25910') #
+subset(d, idnum_clean == '32890') #
+subset(d, idnum_clean == '33410') #
+subset(d, idnum_clean == '34460') #
+subset(d, idnum_clean == '35820') #
+subset(d, idnum_clean == '35830') #
+subset(d, idnum_clean == '35970') #
+subset(d, idnum_clean == '36230') #
+subset(d, idnum_clean == '39970') #
+subset(d, idnum_clean == '41500') #
+
+# Temporarily dropping all idnum_cleans that are dups!!!
+dim(d)
+d <- subset(d, duplicated(idnum_clean) == FALSE)
+```
+
+```{r merger of t with d}
+# Now there are no dups
+t$idnum %>% duplicated %>% table
+d$idnum_clean %>% duplicated %>% table
+
+names(t)
+
+dim(d); dim(t)
+
+d <- merge(d, t, 
+      by.x = "idnum_clean", 
+      by.y = "idnum", 
+      all = T)
+
+dim(d)
+```
+
+```{r}
+t %>% names %>% noquote
+
+t_desc['sm_better1']
+t_desc['sm_help']   
+t_desc['sm_better2'] 
+t_desc['sm_stkhelp'] 
+t_desc['sm_bttrway'] 
+t_desc['sm_dobett']
+t_desc['SM1_r']      
+t_desc['SM2'] 
+
+# These are timing variables
+t_desc['sm_dotm_1']  
+t_desc['sm_dotm_2']  
+t_desc['sm_dotm_3']  
+t_desc['sm_dotm_4'] 
+```
+
+# IX. Spring 2016 Performance Data 
+```{r}
+# already loaded in a previous chunk
+# load the Spring 2016 grades data
+# s <- read.csv("10_Spring_2016_grades/ld_spr_2016_grades.csv", 
+#              na.strings = "", 
+#              stringsAsFactors=FALSE, 
+#              head = T) 
+
+# Make your long grades data wide
+names(s)
+names(s) [names(s) == 'Student_ID_Transform'] <- 'idnum'
+
+sum(is.na(s$Course)) # no NAs for Course titles 
+
+# Prepare grades data for merging
+# paste course identyifing data into one variable course_yr_term
+    s$Course <- gsub("[ ]", "_", s$Course) # replace " " with "_"
+    s$Course <- gsub("[:]", "_", s$Course) # replace " " 
+    s$Course <- gsub("[-]", "_", s$Course) # replace " " 
+    s$course_yr_trm <- with(s, paste(Course, "_1516t", Semester_Term, sep=""))
+# rename performance variable
+    s$score <- s$Grade; s$Grade <- NULL
+
+# Convert data from long to wide format using cast()
+  # create subset that drops nameless courses from data
+  cp <- s
+  dim(cp)
+  sum(is.na(cp$idnum)) # 0 NAs
+
+  # view key variables
+  length(unique(cp$idnum)) # 573 unique IDs
+  
+  # create a subset of the variables you will transform to a wide dataset
+  cp2 <- subset(cp, select = c(idnum, course_yr_trm, score))
+  dim(cp2)
+  head(cp2)
+
+# load packages
+library(reshape2)
+w <- reshape2::dcast(cp2, idnum ~ course_yr_trm,
+                   value.var = "score",
+                   fun.aggregate = mean, 
+                   na.rm = TRUE)
+                  # what is the effect of na.rm=T here???
+                  # what is the effect of mean in fun.aggregate???
+                  # how can I confirm if any data were lost???
+
+dim(w) 
+head(w)
+```
+
+### You should now be able to merge the wide grades data (w) with the main dataset (d)
+```{r}
+names(w)
+
+names(d)
+
+# confirm key vars are of same class
+class(d$idnum_clean)
+class(w$idnum)
+w$idnum <- as.character(w$idnum)
+
+# Now there are no dups
+w$idnum %>% duplicated %>% table
+d$idnum_clean %>% duplicated %>% table
+
+dim(d); dim(w)
+
+d <- merge(d, w, 
+      by.x = "idnum_clean", 
+      by.y = "idnum", 
+      all = T)
+
+dim(d) # looks like only 183 of original Ps made it through
+```
+
+```{r}
+############ Resolve Algebra ############ 
+subset(d, select = c(Algebra_I_1516t2.x,  Algebra_I_1516t2.y) )
+d$Algebra_I_1516t2 <- with(d, paste(Algebra_I_1516t2.x, Algebra_I_1516t2.y, sep=''))
+d$Algebra_I_1516t2 <- d$Algebra_I_1516t2 %>% str_replace_all("NaN", "") %>% str_replace_all("NA", "") %>% as.numeric
+table(d$Algebra_I_1516t2) # looks clean
+
+# drop .x & .y versions
+d <- subset(d, select = -c(Algebra_I_1516t2.x, Algebra_I_1516t2.y))
+names(d)
+
+
+########### Resolve Spanish ############ 
+subset(d, select = c(Spanish_I_1516t2.x,  Spanish_I_1516t2.y) )
+d$Spanish_I_1516t2 <- with(d, paste(Spanish_I_1516t2.x, Spanish_I_1516t2.y, sep=''))
+d$Spanish_I_1516t2 <- d$Spanish_I_1516t2.y %>% str_replace_all("NaN", "") %>% str_replace_all("NA", "") %>% as.numeric
+table(d$Spanish_I_1516t2) # looks clean
+
+# drop .x & .y versions
+d <- subset(d, select = -c(Spanish_I_1516t2.x, Spanish_I_1516t2.y))
+```
+
+```{r add grade level from official roster of 2015-16 to main data}
+# create a subset of the variables you will transform to a wide dataset
+  cp3 <- subset(cp, select = c(idnum, Grade_In_School))
+  dim(cp3)
+  head(cp3)
+
+# creates a dataframe with cols 6-12 
+g <- reshape2::dcast(cp3, idnum ~ Grade_In_School,
+                   value.var = "Grade_In_School",
+                   fun.aggregate = mean, 
+                   na.rm = TRUE)
+# rename vars 
+names(g) [names(g) == '6']  <- "six"
+names(g) [names(g) == '7']  <- "seven"
+names(g) [names(g) == '8']  <- "eight"
+names(g) [names(g) == '9']  <- "nine"
+names(g) [names(g) == '10'] <- "ten"
+names(g) [names(g) == '11'] <- "eleven"
+names(g) [names(g) == '12'] <- "twelve"
+
+# condense
+g$official_gr_1516t2 <- apply(X = g[,c('six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve')],
+                MARGIN =1, FUN = mean, na.rm = T)
+head(g)
+
+# reduce data to vars you wish to merge
+g <- subset(g, select=c(idnum, official_gr_1516t2))
+
+dim(d); dim(g)
+
+d <- merge(d, g, 
+      by.x = "idnum_clean", 
+      by.y = "idnum", 
+      all = T)
+
+dim(d)
+```
+
+## Correct var names that begin with a number
+```{r}
+# write the correct names pseudofunction o/s the denumber_names function so it can be applied to cell contents as well as colnames. 
+correct_names <- . %>% 
+    str_replace("6th", "Sixth") %>% 
+    str_replace("7th", "Seventh") %>% 
+    str_replace("8th", "Eighth")
+
+denumber_names <- function(x) {
+  cn <- colnames(x) # save list of column names as cn
+  cn <- correct_names(cn) # apply renaming function to list of column names
+  colnames(x) <- cn # overwrite summary stats table with clean names
+  x
+}
+
+d <- denumber_names(d)
+```
+
+### Create a long dataframe of average grade levels per course (gr_lev_long)
+```{r convert array to dataframe}
+cp4 <- subset(cp, select = c(course_yr_trm, Grade_In_School))
+  dim(cp4)
+  head(cp4)
+  
+gr_lev <- base::tapply(cp4$Grade_In_School, cp4$course_yr_trm, mean) 
+    # - creates an array 
+    # - dimnames(gr_lev) indicates the factor level of course_yr_trm
+
+gr_lev_long <- data.frame(gr_lev, rownames = dimnames(gr_lev))
+    # Drop weird 2nd variable created during dataframe conversion
+    gr_lev_long <- subset(gr_lev_long, select = gr_lev)
+
+# create new var to indicate the course
+gr_lev_long$Course <- NA
+gr_lev_long$Course <- rownames(gr_lev_long)
+# reset row names
+  rownames(gr_lev_long) <- seq(length=nrow(gr_lev_long))
+  
+gr_lev_long$Course <- gr_lev_long$Course %>% correct_names
+```
+
+
+These data could still be more thoroughly checked for 
+!!!
+???
+and missing Ps
+
+
+## 2013-2014 Spring GPAs
+```{r composite Math grade 1314t1}
+# create a math composite variable
+d$math_cv_1314t1 <- apply(X = d[,c('Algebra_I_-_Modified_1314t1', 
+                      'Algebra_I_1314t1', 
+                      'Algebra_II_-_Honors_1314t1', 
+                      'Algebra_II_1314t1', 
+                      'Economics_1314t1', 
+                      'Geometry_-_Honors_1314t1', 
+                      'Geometry_-_Modified_1314t1', 
+                      'Geometry_1314t1', 
+                      'Independent_Study_in_Math_-_College_Algebra_1314t1', 
+                      'Math_Models_1314t1', 
+                      'Math_Models_Modified_1314t1', 
+                      'Pre-Calculus_-_Honors_1314t1')], 
+                      MARGIN = 1, FUN = mean, na.rm = T)
+hist(d$math_cv_1314t1)
+      
+describe(d$math_cv_1314t1)
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$math_cv_1314t1)
+hist(s16$math_cv_1314t1)
+stem(s16$math_cv_1314t1)
+```
+
+```{r composite Science grade 1314t1}
+d$science_cv_1314t1 <- apply(X = d[,c('Anatomy_1314t1', 
+                            'Biology_-_Honors_1314t1', 
+                            'Biology_-_Modified_1314t1', 
+                            'Biology_1314t1', 
+                            'Chemistry_-_Honors_1314t1', 
+                            'Chemistry_-_Modified_1314t1', 
+                            'Chemistry_1314t1')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$science_cv_1314t1)
+      
+describe(d$science_cv_1314t1) # big skew, but N = 543
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$science_cv_1314t1)
+hist(s16$science_cv_1314t1)
+stem(s16$science_cv_1314t1)
+```
+
+```{r composite English grade 1314t1}
+d$english_cv_1314t1 <- apply(X = d[,c('English_I_-_Honors_1314t1', 
+                            'English_I_1314t1', 
+                            'English_II_-_Honors_1314t1', 
+                            'English_II_-_Modified_1314t1', 
+                            'English_II_1314t1', 
+                            'English_III_-_American_Lit_-_Honors_1314t1', 
+                            'English_III_-_American_Lit_1314t1')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$english_cv_1314t1)
+describe(d$english_cv_1314t1) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$english_cv_1314t1)
+hist(s16$english_cv_1314t1)
+stem(s16$english_cv_1314t1)
+```
+
+```{r composite Reading grade 1314t1}
+d$reading_cv_1314t1 <- apply(X = d[,c('Reading_-_SARA__III_1314t1', 
+                            'Reading_-_SARA_I_1314t1', 
+                            'Reading_-_SARA_II_1314t1', 
+                            'Reading_-_SARA_III_1314t1', 
+                            'Reading_Comprehension_I_1314t1', 
+                            'Reading_Comprehension_II_1314t1', 
+                            'Reading_Comprehension_III_1314t1', 
+                            'Reading_SARA_-_III_1314t1')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$reading_cv_1314t1)
+      
+describe(d$reading_cv_1314t1) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$reading_cv_1314t1)
+hist(s16$reading_cv_1314t1)
+stem(s16$reading_cv_1314t1)
+```
+
+```{r core subject GPA 1314t1}
+d$core_gpa_1314t1 <- apply(X = d[,c('math_cv_1314t1',
+                            'science_cv_1314t1',
+                            'english_cv_1314t1',
+                            'reading_cv_1314t1')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$core_gpa_1314t1)
+      
+describe(d$core_gpa_1314t1) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$core_gpa_1314t1)
+hist(s16$core_gpa_1314t1)
+stem(s16$core_gpa_1314t1)
+```
+
+## 2015-2016 Spring GPAs
+```{r composite Math grade 1516t2}
+# create a math composite variable
+d$math_cv_1516t2 <- apply(X = d[,c('Math_Models_1516t2', 'Pre_Calculus___Honors_1516t2', 'Calculus___Honors_1516t2', 'Geometry___Honors_1516t2', 'Geometry_1516t2', 'Algebra_I_1516t2', 'Algebra_II___Honors_1516t2', 'Algebra_II___Modified_1516t2', 'Algebra_II_1516t2', 'Eighth_Math__Algebra_I_1516t2', 'Eighth_Grade_Mathematics_1516t2', 'Seventh_grade_Mathematics_1516t2', 'Sixth_Mathematics_1516t2')], 
+                  MARGIN = 1, FUN = mean, na.rm = T)
+hist(d$math_cv_1516t2)
+      
+describe(d$math_cv_1516t2) # big skew, but N = 543
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$math_cv_1516t2)
+hist(s16$math_cv_1516t2)
+stem(s16$math_cv_1516t2)
+```
+
+```{r composite Science grade 1516t2}
+d$science_cv_1516t2 <- apply(X = d[,c('Sixth_Science_1516t2',
+                            'Seventh_Science_1516t2',
+                            'Eighth_Science_1516t2',
+                            'Anatomy_1516t2',
+                            'Biology___Honors_1516t2',
+                            'Biology_1516t2',
+                            'Chemistry___Honors_1516t2',
+                            'Chemistry_1516t2',
+                            'Earth_and_Space_Science_1516t2',
+                            'Physics_I___Honors_1516t2',
+                            'Physics_I_1516t2',
+                            'Physics_II___Honors_1516t2')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$science_cv_1516t2)
+      
+describe(d$science_cv_1516t2) # big skew, but N = 543
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$science_cv_1516t2)
+hist(s16$science_cv_1516t2)
+stem(s16$science_cv_1516t2)
+```
+
+```{r composite English grade 1516t2}
+d$english_cv_1516t2 <- apply(X = d[,c('Sixth_English___Assoc._Method_1516t2',                               
+                            'Sixth_English_1516t2',
+                            'Seventh_English_1516t2',
+                            'Eighth_English_1516t2',
+                            'English_I___Honors_1516t2',
+                            'English_I_1516t2',
+                            'English_II___Honors_1516t2',
+                            'English_II_1516t2',
+                            'English_III___American_Lit___Honors_1516t2',
+                            'English_III___American_Lit_1516t2',
+                            'English_IV___British_Lit___Honors_1516t2',
+                            'English_IV___British_Lit_1516t2')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$english_cv_1516t2)
+describe(d$english_cv_1516t2) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$english_cv_1516t2)
+hist(s16$english_cv_1516t2)
+stem(s16$english_cv_1516t2)
+```
+
+```{r composite Reading grade 1516t2}
+d$reading_cv_1516t2 <- apply(X = d[,c('Sixth_Reading_1516t2',
+                            'Seventh_English___Association_Method_1516t2',
+                            'Seventh_Reading_1516t2',
+                            'Eighth_Reading_1516t2',
+                            'Reading___10_1516t2',
+                            'Reading___11_1516t2',
+                            'Reading___9_1516t2')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$reading_cv_1516t2)
+      
+describe(d$reading_cv_1516t2) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$reading_cv_1516t2)
+hist(s16$reading_cv_1516t2)
+stem(s16$reading_cv_1516t2)
+```
+
+```{r core subject GPA 1516t2}
+d$core_gpa_1516t2 <- apply(X = d[,c('math_cv_1516t2',
+                            'science_cv_1516t2',
+                            'english_cv_1516t2',
+                            'reading_cv_1516t2')], 
+                            MARGIN = 1, FUN = mean, na.rm = T)
+
+hist(d$core_gpa_1516t2)
+      
+describe(d$core_gpa_1516t2) 
+
+# subset who completed a Strategic Mindset Scale (N=265)
+s16 <- subset(d, !is.na(strat_ms_cv))
+describe(s16$core_gpa_1516t2)
+hist(s16$core_gpa_1516t2)
+stem(s16$core_gpa_1516t2)
+```
+
+# Composite variable calculation for all studies:
+```{r CV: GORT}
+# GORT 
+d$gort_1516 <- apply(X = d[,c("RA_f1516", "RC_f1516","RR_f1516")],
+                MARGIN =1, FUN = mean, na.rm = T)
+      d <- moveme(d, c("gort_1516"), "after", "GORT_TestDate_f1516")
+      label(d$gort_1516) = "mean GORT score from 2015-16 data" 
+      describe(d$gort_1516)
+      hist(d$gort_1516)
+```
+
+```{r CV: mindset}
+########################################################################################          
+######################### Growth Mindset Fall 2014-15 ##################################
+########################################################################################
+
+    d$ITI_amount_f14_R <- 7 - d$ITI_amount_f14 # "You have a certain amount of intelligence and you really can`t do much to change  it."
+    d$ITI_change_f14_R <- 7 - d$ITI_change_f14 # "Your intelligence is something about you that you can`t change very  much."
+    d$ITI_basic_f14_R <- 7 - d$ITI_basic_f14 # "You can learn new things, but you can`t really change your basic intelligence."
+    
+    d$ ITI_comp_f14 <- apply(X = d[,c("ITI_amount_f14_R","ITI_change_f14_R", "ITI_basic_f14_R")], 
+                              MARGIN =1, FUN = mean, na.rm = T)
+      
+    hist(d$ ITI_comp_f14)
+    pd <- density(d$ ITI_comp_f14, na.rm=T); plot(pd) 
+    describe(d$ ITI_comp_f14)
+    
+          temp <- subset(d, select = c("ITI_amount_f14_R","ITI_change_f14_R", "ITI_basic_f14_R"))
+          # get the column numbers for the variables
+          variables = names(temp); as.data.frame(variables) 
+          # factor analyze your variables
+          factanal(na.omit(temp[,1:3]),1) # the load
+          alpha(na.omit(temp[,c(1:3)])) # a = .
+
+########################################################################################          
+######################### Growth Mindset Spring 2015 ###################################
+########################################################################################
+          
+    d$ITI_amount_s15_R <- 7 - d$ITI_amount_s15 # "You have a certain  amount of intelligence and you really can`t do much to change  it."
+    d$ITI_change_s15_R <- 7 - d$ITI_change_s15 # "Your intelligence is  something about you that you can`t change very  much."
+    d$ITI_basic_s15_R <- 7 - d$ITI_basic_s15 # "You can learn new  things, but you can`t really change your basic intelligence."
+    
+    d$ ITI_comp_s15 <- apply(X = d[,c("ITI_amount_s15_R","ITI_change_s15_R", "ITI_basic_s15_R")], 
+                              MARGIN =1, FUN = mean, na.rm = T)
+      
+    hist(d$ ITI_comp_s15)
+    pd <- density(d$ ITI_comp_s15, na.rm=T); plot(pd) 
+    describe(d$ ITI_comp_s15)
+    
+          temp <- subset(d, select = c("ITI_amount_s15_R","ITI_change_s15_R", "ITI_basic_s15_R"))
+          # get the column numbers for the variables
+          variables = names(temp); as.data.frame(variables) 
+          # factor analyze your variables
+          factanal(na.omit(temp[,1:3]),1) # the load
+          alpha(na.omit(temp[,c(1:3)])) # a = .
+
+########################################################################################          
+######################### Growth Mindset Fall 2015 #####################################
+########################################################################################
+
+    d$ITI_amount_f15_R <- 7 - d$ITI_amount_f15 # "You have a certain  amount of intelligence and you really can`t do much to change  it."
+    d$ITI_change_f15_R <- 7 - d$ITI_change_f15 # "Your intelligence is  something about you that you can`t change very  much."
+    d$ITI_basic_f15_R <- 7 - d$ITI_basic_f15 # "You can learn new  things, but you can`t really change your basic intelligence."
+    
+    d$ ITI_comp_f15 <- apply(X = d[,c("ITI_amount_f15_R","ITI_change_f15_R", "ITI_basic_f15_R")], 
+                              MARGIN =1, FUN = mean, na.rm = T)
+      
+    hist(d$ ITI_comp_f15)
+    pd <- density(d$ ITI_comp_f15, na.rm=T); plot(pd) 
+    describe(d$ ITI_comp_f15)
+    
+          temp <- subset(d, select = c("ITI_amount_f15_R","ITI_change_f15_R", "ITI_basic_f15_R"))
+          # get the column numbers for the variables
+          variables = names(temp); as.data.frame(variables) 
+          # factor analyze your variables
+          factanal(na.omit(temp[,1:3]),1) # they load
+          alpha(na.omit(temp[,c(1:3)])) # a = .81
+
+########################################################################################          
+######################### Growth Mindset Spring 2016 ###################################
+########################################################################################
+          
+    d$ITI_amount_s16_R <- 7 - d$ITI_amount_s16 # "You have a certain  amount of intelligence and you really can`t do much to change  it."
+    d$ITI_change_s16_R <- 7 - d$ITI_change_s16 # "Your intelligence is  something about you that you can`t change very  much."
+    d$ITI_basic_s16_R <- 7 - d$ITI_basic_s16 # "You can learn new  things, but you can`t really change your basic intelligence."
+    
+    d$ITI_comp_s16 <- apply(X = d[,c("ITI_amount_s16_R","ITI_change_s16_R", "ITI_basic_s16_R")], 
+                              MARGIN =1, FUN = mean, na.rm = T)
+    
+    d <- moveme(d, 'ITI_comp_s16', 'after', 'ITI_amount_s16')
+    d <- moveme(d, c("ITI_amount_s16_R", "ITI_change_s16_R", "ITI_basic_s16_R"), 'after', 'ITI_comp_s16')
+      
+    hist(d$ITI_comp_s16)
+    pd <- density(d$ITI_comp_s16, na.rm=T); plot(pd) 
+    describe(d$ITI_comp_s16)
+    
+          temp <- subset(d, select = c("ITI_amount_s16_R","ITI_change_s16_R", "ITI_basic_s16_R"))
+          # get the column numbers for the variables
+          variables = names(temp); as.data.frame(variables) 
+          # factor analyze your variables
+          factanal(na.omit(temp[,1:3]),1) # they load
+          alpha(na.omit(temp[,c(1:3)])) # a = .83
+```         
+          
+```{r experimental condition}
+# contrast coded mindset condition
+d$cond_ms_cc <- NA
+d$cond_ms_cc [d$cond_ms_s15 == "Control"] <- -1
+d$cond_ms_cc [d$cond_ms_s15 == "Growth"] <- 1
+d <- moveme(d, c("cond_ms_cc"), "after", "cond_ms_s15") 
+
+# mindset condition coded 12
+d$cond_ms_n <- NA
+d$cond_ms_n [d$cond_ms_s15 == "Control"] <- 1
+d$cond_ms_n [d$cond_ms_s15 == "Growth"] <- 2
+d <- moveme(d, c("cond_ms_n"), "after", "cond_ms_s15") 
+
+# mindset difference score
+d$ITI_diff_f14_to_f15 <- d$ITI_comp_f15 - d$ITI_comp_f14
+hist(d$ITI_diff_f14_to_f15)
+d <- moveme(d, c("ITI_diff_f14_to_f15"), "after", "ITI_comp_f15") 
+```
+
+```{r IQ & GORT}
+# WISC IQ
+d$WISC_1415 <- apply(X = d[,c("WorkingMemory_1415", "VerbalComp_1415", "PerceptualReasoning_1415", "ProcessingSpeed_1415")], MARGIN =1, FUN = mean, na.rm = T)
+
+# GORT
+d$gort_1415 <- apply(X = d[,c("GORT_RA_1415",  "GORT_RC_1415",  "GORT_RR_1415")], MARGIN =1, FUN = mean, na.rm = T)
+```
+
+## Strategic Behaviors
+This strategic behaviors scale may be too low alpha to use meaningfully. 
+```{r strategic behaviors}
+# Fall 2014 strategic behaviors: 
+      d$B_SP2_R_f14 <- 6 - d$B_SP2_f14
+      d$B_SM7_R_f14 <- 6 - d$B_SM7r_f14
+    # subset variables to test
+    fact <- subset(d, select = c("B_SP1_f14",   # consider alts b4 jumping in
+                                 "B_SP2_R_f14", # jump right in
+                                 "B_SP3_f14",   # try teacher's recomended approach
+                                 "B_SM4_f14",   # stuck --> step back
+                                 "B_SM5_f14",   # struggle --> mimic students
+                                 "B_SM6_f14",   # struggle --> reach out to students for alt paths
+                                 "B_SM7_R_f14"))# hard to change approach
+    
+    corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3); corr_table
+    
+    corrplot(corr_table, method = "circle") #plot matrix
+        # The strongest correlation is b/w B_SM6_f14 & B_SM5_f14, r = .40. These are peer helpseeking items. 
+    
+    scree_plot <- scree(corr_table,factors=TRUE, pc=TRUE, main="Scree plot", hline=NULL, add=FALSE); scree_plot 
+    
+    # Begin Factor Analysis
+    dim(fact); str(fact)
+    factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax")
+    alpha(na.omit(fact[,c(1:ncol(fact))])) # .48 is very low
+    
+    # could call this item peer_help but alpha is still low
+    alpha(na.omit(fact[,c(5:6)])) # .57
+```
+
+These strategic behavior variables load so poorly they don't seem worth including. 
+```{r low alpha strategic behavior composites}
+# Strategic Behaviors
+
+######################################################### 
+###################### Fall 2014 ######################## 
+#########################################################       
+      d$strat_beh_f14 <- apply(X = d[,c("B_SP1_f14", "B_SP2_R_f14", "B_SP3_f14", "B_SM4_f14", "B_SM5_f14", "B_SM6_f14", "B_SM7_R_f14")], MARGIN =1, FUN = mean, na.rm = T)
+
+      d <- moveme(d, c("B_SP2_R_f14", "B_SM7_R_f14", "strat_beh_f14"), "after", "B_SM7r_f14")
+            # SPSP_2016 poster just interacted B_SP_3
+      
+######################################################### 
+###################### Spring 2015 ###################### 
+#########################################################      
+      d$B_SP2_R_s15 <- 6 - d$B_SP2_s15
+      d$B_SM7_R_s15 <- 6 - d$B_SM7r_s15
+      
+      d$strat_beh_s15 <- apply(X = d[,c("B_SP1_s15", "B_SP2_R_s15", "B_SP3_s15", "B_SM4_s15", "B_SM5_s15", "B_SM6_s15", "B_SM7_R_s15")], MARGIN =1, FUN = mean, na.rm = T)
+      
+      d <- moveme(d, c("B_SP2_R_s15", "B_SM7_R_s15", "strat_beh_s15"), "after", "B_SM7r_s15")
+
+######################################################### 
+###################### Fall 2015 ######################## 
+#########################################################      
+      d$B_SP2_R_f15 <- 6 - d$B_SP2_f15
+      d$B_SM7_R_f15 <- 6 - d$B_SM7r_f15
+      
+      d$strat_beh_f15 <- apply(X = d[,c("B_SP1_f15", "B_SP2_R_f15", "B_SP3_f15", "B_SM4_f15", "B_SM5_f15", "B_SM6_f15", "B_SM7_R_f15")], MARGIN =1, FUN = mean, na.rm = T)
+      
+      d <- moveme(d, c("B_SP2_R_f15", "B_SM7_R_f15", "strat_beh_f15"), "after", "B_SM7r_f15")
+
+######################################################### 
+###################### Spring 2016 ###################### 
+######################################################### 
+# reverse score variables that need it      
+d$B_SP2_R_s16 <- 6 - d$B_SP2_s16
+d$B_SM7_R_s16 <- 6 - d$B_SM7r_s16
+
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c("B_SP1_s16", "B_SP2_R_s16", "B_SP3_s16", "B_SM4_s16", "B_SM5_s16", "B_SM6_s16", "B_SM7_R_s16"))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+alpha(na.omit(df_t[,c("B_SP1_s16", "B_SP2_R_s16", "B_SP3_s16", "B_SM4_s16", "B_SM5_s16", "B_SM6_s16", "B_SM7_R_s16")])) 
+
+# Create composite variable
+d$strat_beh_s16 <- apply(X = d[,c("B_SP1_s16", "B_SP2_R_s16", "B_SP3_s16", "B_SM4_s16", "B_SM5_s16", "B_SM6_s16", "B_SM7_R_s16")], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("B_SP2_R_s16", "B_SM7_R_s16", "strat_beh_s16"), "after", "B_SM7r_s16")
+```
+If none of the strategic behaviors factor load, then why are you combining them into a single variable? 
+
+### Augmented strategic behavior scale (*strat_beh_small_s16*)
+Intended to raise alpha to sufficient level
+```{r}
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16'))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+a <- alpha(na.omit(df_t[,c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16')])) # .61
+
+# Create composite variable
+d$strat_beh_small_s16 <- apply(X = d[,c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16')], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("strat_beh_small_s16"), "before", "B_SP1_s16")
+```
+Alpha is just under threshold in the augmented scale for strategic behavior, ($\alpha$ = `r a$total$raw_alpha %>% myround(2)`).
+
+alphas for 2-item autonomy are .63, .59 and .61. You could probably rely on either this or the best single item autonomy and test if there is any difference.
+```{r autonomy}
+###################################################################
+###################### Fall 2014-2015 #############################
+###################################################################
+      
+          # Factor Analysis
+          d$SS_A9_R_f14 <- 6 - d$SS_A9_f14
+          d$SS_A11_R_f14 <- 6 - d$SS_A11_f14
+          fact <- subset(d, select = c(SS_A9_R_f14, SS_A10_f14, SS_A11_R_f14))
+          dim(fact); str(fact)
+          corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3); corr_table
+          factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax")
+          alpha(na.omit(d[,c("SS_A9_R_f14", "SS_A11_R_f14")])) # .63
+      d$autonind_f14 <- apply(X = d[,c("SS_A9_R_f14", "SS_A11_R_f14")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      d <- moveme(d, c("SS_A9_R_f14", "SS_A11_R_f14", "autonind_f14"), "after", "SS_A12_f14")
+
+###################################################################
+###################### Spring 2014-2015 ###########################
+###################################################################
+      
+      d$SS_A9_R_s15 <- 6 - d$SS_A9_s15
+      d$SS_A11_R_s15 <- 6 - d$SS_A11_s15
+      fact <- subset(d, select = c(SS_A9_R_s15, SS_A10_s15, SS_A11_R_s15))
+          dim(fact); str(fact)
+          corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3); corr_table # similar to Fall
+          factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax") # factor loading is weaker than in fall 2014
+          alpha(na.omit(d[,c("SS_A9_R_s15", "SS_A11_R_s15")])) # .59
+          
+      d$autonind_s15 <- apply(X = d[,c("SS_A9_R_s15","SS_A11_R_s15")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      d <- moveme(d, c("SS_A9_R_s15", "SS_A11_R_s15", "autonind_s15"), "after", "SS_A12_s15")
+
+###################################################################
+###################### Fall 2015-2016 #############################
+###################################################################
+      d$SS_A9_R_f15 <- 6 - d$SS_A9_f15
+      d$SS_A11_R_f15 <- 6 - d$SS_A11_f15
+      fact <- subset(d, select = c(SS_A9_R_f15, SS_A10_f15, SS_A11_R_f15))
+          dim(fact); str(fact)
+          corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3); corr_table # similar to Fall & Spring
+          factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax") # factor loading is strong like in fall 2014
+          alpha(na.omit(d[,c("SS_A9_R_f15", "SS_A11_R_f15")])) # .61
+          
+      d$autonind_f15 <- apply(X = d[,c("SS_A9_R_f15","SS_A11_R_f15")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      d <- moveme(d, c("SS_A9_R_f15", "SS_A11_R_f15", "autonind_f15"), "after", "SS_A12_f15")
+      
+###################################################################
+###################### Spring 2015-2016 ###########################
+###################################################################
+      d$SS_A9_R_s16 <- 6 - d$SS_A9_s16
+      d$SS_A11_R_s16 <- 6 - d$SS_A11_s16
+      fact <- subset(d, select = c(SS_A9_R_s16, SS_A10_s16, SS_A11_R_s16))
+          corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3); corr_table # similar to Fall & Spring
+          fact2 <- fact[complete.cases(fact),]
+          eigen(cor(fact2))$values # only works with complete cases data. 
+          factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax")
+          alpha(na.omit(d[,c("SS_A9_R_s16", "SS_A11_R_s16")])) # .67
+          
+      d$autonind_s16 <- apply(X = d[,c("SS_A9_R_s16","SS_A11_R_s16")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      d <- moveme(d, c("SS_A9_R_s16", "SS_A11_R_s16", "autonind_s16"), "after", "SS_A12_s16")
+```
+
+```{r trust}
+###################################################################
+###################### Spring 2015-2016 ###########################
+###################################################################
+
+# create subset of variables to factor analyze
+d$tr_control_R_s16 <- 7 - d$tr_control_s16
+
+df_t <- subset(d, select = c("tr_best_s16", "tr_control_R_s16", "tr_fair_s16"))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+a <- alpha(na.omit(df_t[,c("tr_best_s16", "tr_control_R_s16", "tr_fair_s16")])) # .83 if middle item dropped
+
+# Create composite variable
+d$trust_cv_s16 <- apply(X = d[,c("tr_best_s16", "tr_fair_s16")], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("trust_cv_s16"), "before", "tr_best_s16")
+```
+
+```{r stereotype threat}
+# stereotype threat
+      #ST1 = "In school, I worry that people will expect less of me because I have a learning difference."
+      #ST2 = "I often worry that people will think I need help when I don’t."
+      #ST3 = "In school, I worry that people will expect me to make a mistake"
+      #ST4 = "If I make a mistake in school, I worry about making people with learning differences look bad."
+
+###################################################################
+###################### Fall 2014-2015 #############################
+###################################################################
+##### only Fall 2014 asked 4-item scale for stereotype threat #####
+
+    fact <- subset(d, select = c("ST1_f14", "ST2_f14", "ST3_f14", "ST4_f14"))
+    dim(fact); str(fact)
+    factanal(na.omit(fact[,1:ncol(fact)]), 1, rotation="varimax")
+    alpha(na.omit(fact)) # .78
+    d$ST_f14_4item <- apply(X = d[,c("ST1_f14", "ST2_f14", "ST3_f14", "ST4_f14")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      hist(d$ST_f14_4item)
+      
+      # after Fall 2014 school only allows 2-item version for fear of insulting students. 
+      # Fall 2014 ST
+      alpha(na.omit(d[,c("ST2_f14", "ST3_f14")])) #.71
+      d$ST_f14 <- apply(X = d[,c("ST2_f14", "ST3_f14")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      hist(d$ST_f14)
+      d <- moveme(d, c("ST_f14_4item", "ST_f14"), "after", "ST3_f14")
+
+      # You didn't ask about stereotype threat in spring of 2015
+          # SS_A12   How often do you worry that people will think less of you if you ask for help from a teacher?  is the closest question to ST in Spr15
+          with(d, cor.test(SS_A12_s15, ST_f14)) # r = .23
+
+###################################################################
+###################### Spring 2014-2015 ###########################
+###################################################################
+          
+# Was Stereotype threat measured this Spring? 
+                      
+###################################################################
+###################### Fall 2015-2016 #############################
+###################################################################
+      alpha(na.omit(d[,c("ST2_f15", "ST3_f15")])) #.67
+      d$ST_f15 <- apply(X = d[,c("ST2_f15", "ST3_f15")], 
+                        MARGIN =1, FUN = mean, na.rm = T)
+      hist(d$ST_f15)
+      d <- moveme(d, "ST_f15", "after", "ST3_f15")
+
+      # stereotype threat across the years
+      d$ST_diff <- with(d, ST_f15 - ST_f14)
+      d <- moveme(d, "ST_diff", "after", "ST_f15")
+
+###################################################################
+###################### Spring 2015-2016 ###########################
+###################################################################
+      
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c('ST2_s16', 'ST3_s16'))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+a <- alpha(na.omit(df_t[,c("ST2_s16", "ST3_s16")])) # .61
+
+# Create composite variable
+d$st_cv_s16 <- apply(X = d[,c('ST2_s16', 'ST3_s16')], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("st_cv_s16"), "before", "ST2_s16")
+```
+
+```{r belonging}
+################################################################################
+################################## Spring 2016 #################################
+################################################################################
+
+# measured in single item: Bel_s16
+```
+
+```{r learning goals}
+################################################################################
+################################## Spring 2016 #################################
+################################################################################
+      
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c('learn_new_s16', 'mistak_s16'))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+a <- alpha(na.omit(df_t[,c('learn_new_s16', 'mistak_s16')])) # .75
+
+# Create composite variable
+d$learngoals_cv_s16 <- apply(X = d[,c('learn_new_s16', 'mistak_s16')], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("learngoals_cv_s16"), "before", "learn_new_s16")
+```
+
+```{r strategic mindset strat_ms_cv}
+names(d) [names(d) == 'SM1_r_s16'] <- 'SM1.r_s16'
+
+d$SM1_R_s16 <- 7 - d$SM1.r_s16 # correctly recoded
+
+fact <- subset(d, select = c(sm_better1_s16, 
+                             sm_help_s16, 
+                             sm_better2_s16, 
+                             sm_stkhelp_s16, 
+                             sm_bttrway_s16, 
+                             sm_dobett_s16, 
+                             SM1_R_s16, 
+                             SM2_s16, 
+                             SM_scav_s16)) 
+            
+        corr_table <- round(cor(fact, use="pairwise.complete.obs"), digits=3) #you need to determine how NAs should be treated. SPSS uses deleting NAs pairwise as a default, so R should do the same in order to compare the results
+
+        corrplot(corr_table, method = "circle") #plot matrix
+        
+        scree_plot <- scree(corr_table,factors=TRUE,pc=TRUE,main="Scree plot",hline=NULL,add=FALSE); scree_plot 
+
+# Begin Factor Analysis
+dim(fact); str(fact)
+factanal(na.omit(fact[,1:9]), 2, rotation="varimax")
+    # SM1_R_s16 hangs with nothing
+    # o/w classic SM hangs together and new items are seperate construct sans SM1_R_s16
+bs_s <- alpha(na.omit(fact[,c(1:6)])) # .62 is magic number
+
+# All components are 1-7 scored so standardization is not necessary before composite is computed: 
+d$strat_ms_cv <- apply(X = d[,c('sm_better1_s16', 
+                               'sm_help_s16', 
+                               'sm_better2_s16', 
+                               'sm_stkhelp_s16', 
+                               'sm_bttrway_s16', 
+                               'sm_dobett_s16')], 
+                  MARGIN = 1, FUN = mean, na.rm = T)
+      hist(d$strat_ms_cv)
+```
+
+The behaviors composite includes items like trying harder after difficulty, planning, considering alternatives, and taking advice.
+```{r strategic and effortful behaviors}
+################################################################################
+################################## Spring 2016 #################################
+################################################################################
+
+# B_E1_s16    When something you are trying to learn is incredibly difficult, how often do you respond by trying harder?
+
+      # B_E2_s16    When you fail to understand something, how often do you become discouraged and want to give up?
+        d$B_E2_R_s16 <- 6 - d$B_E2_s16 # Reverse code items as needed
+        d <- moveme(d, 'B_E2_R_s16', 'after', 'B_E2_s16')
+  
+# B_A1_s16    In school, how often do you work on improving your weaknesses rather than just working in areas where you are already strong?
+
+# B_SP1_s16   Before you begin working on a project or assignment, how frequently do you consider different ways to prepare for it before choosing the best approach for you?
+
+      # B_SP2_s16   When you are given a complicated school assignment, how frequently do you jump right in and start working without first spending time thinking about different ways to complete the assignment?
+        d$B_SP2_R_s16 <- 6 - d$B_SP2_s16 # Reverse code items as needed
+        d <- moveme(d, 'B_SP2_R_s16', 'after', 'B_SP2_s16')  
+  
+# B_SP3_s16   When you’re trying to learn something new, how frequently do you start off by trying the approach your teacher recommends to see if it works best for you?
+
+# B_SM4_s16   When you’re doing schoolwork and get stuck, how frequently do you step back and consider a new approach?
+
+# B_SM5_s16   When you struggle with something in school, how often do you try approaches that other students are using to see if they will work for you?  
+
+# B_SM6_s16   When you’re doing schoolwork and you get stuck, how often do you reach out to others to find out if they can suggest other ways of making progress?
+
+      # B_SM7r_s16  When you’re doing schoolwork and you get stuck, how often do you find it difficult to change your approach?
+        d$B_SM7_R_s16 <- 6 - d$B_SM7r_s16 # Reverse code items as needed
+        d <- moveme(d, 'B_SM7_R_s16', 'after', 'B_SM7r_s16')  
+
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c(B_E1_s16:B_SM7_R_s16))
+df_t <- subset(df_t, select = -c(B_E2_s16, B_SP2_s16, B_SM7r_s16)) # drop the original unreversed items. 
+
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+    corr_table %>% round(digits=2)
+    
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+# Alpha value for composite variable    
+alpha(na.omit(df_t[,c('B_E1_s16', 'B_A1_s16', 'B_SP1_s16', 'B_SP3_s16', 'B_SM4_s16', 'B_SM5_s16', 'B_SM6_s16')])) # .73
+
+# Create composite variable
+d$strat_beh_long_s16 <- apply(X = d[,c('B_E1_s16', 'B_A1_s16', 'B_SP1_s16', 'B_SP3_s16', 'B_SM4_s16', 'B_SM5_s16', 'B_SM6_s16')], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+d <- moveme(d, c("strat_beh_long_s16"), "before", "B_E1_s16")
+```
+
+### low alpha for small strat_beh scale
+ - where did this strat_beh scale come from? 
+```{r}
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16'))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable    
+alpha(na.omit(df_t[,c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16')])) 
+
+# Create composite variable
+d$strat_beh_small_s16 <- apply(X = d[,c("B_SP1_s16", "B_SP3_s16", "B_SM4_s16", 'SM2_s16', 'SM_scav_s16')], MARGIN=1, FUN=mean, na.rm=TRUE)
+
+# Update variable order in main dataset
+#d <- moveme(d, c("B_SP2_R_s16", "B_SM7_R_s16", "strat_beh_s16"), "after", "B_SM7r_s16")
+```
+
+```{r CV perceive teacher feedback as negative}
+# Response Items: Never(1) -- Most of the Time (5)
+# SS_B1  When your teacher gives you feedback, how frequently do you think carefully about it?
+# SS_B2  After getting feedback from a teacher about how you could do something better, how frequently do you change how you do your schoolwork?
+# SS_B3   How often do you disregard feedback from your teachers?
+    # Correct directionality
+    names(d) [names(d) == 'SS_B3_s16'] <- 'SS_B3r_s16'
+    d$SS_B3_R_s16 <- 6 - d$SS_B3r_s16
+# SS_F4  How often is feedback from your teachers really useful?
+# SS_F7  How often do you feel like feedback from your teachers is mean?
+# SS_A8  When you’re struggling to learn something, how often do you seek out help?
+# SS_A9  When you follow a teacher's suggestion for how to do something better, how often do you feel like you’re being bossed around?
+# SS_A10  When you use a teacher's suggestion for how to do something better in school, how often do you feel like you’re taking charge of your education?
+# SS_A11  When you use a teacher's suggestion for how you could do something better in school, how often do you feel like you’re just doing what they're telling you to do?
+# SS_A12   How often do you worry that people will think less of you if you ask for help from a teacher?  
+  
+
+# create subset of variables to factor analyze
+df_t <- subset(d, select = c('SS_B1_s16', 'SS_B2_s16',  'SS_B3r_s16',  'SS_F4_s16',  'SS_F7_s16',  'SS_A8_s16',  'SS_A9_s16',  'SS_A10_s16',  'SS_A11_s16', 'SS_A12_s16'))
+ 
+    # Save correlation table       
+    corr_table <- df_t %>% 
+    cor(use="pairwise.complete.obs") # SPSS deletes NAs pairwise as default
+    
+    corr_table %>% corrplot(method = "circle") # colored corr plot
+
+# Scree Plot of Eigen values, set factors= in factanal() to number of eigen > 1.
+corr_table %>% scree(factors=TRUE, pc=FALSE, main="Scree Plot", hline=NULL, add=FALSE) 
+        
+# Factor Analysis        
+factanal(na.omit( df_t[, 1:ncol(df_t)] ), factors=1, rotation="varimax") 
+
+# Alpha value for composite variable: hostile perception of teacher feedback    
+alpha(na.omit(df_t[,c('SS_F7_s16', 'SS_A9_s16', 'SS_A11_s16')])) # .75
+
+# Create composite variable
+d$neg_tch_fb_s16 <- apply(X = d[,c('SS_F7_s16', 'SS_A9_s16', 'SS_A11_s16')], 
+                      MARGIN=1, FUN=mean, na.rm=TRUE)
+
+hist(d$neg_tch_fb_s16)
+
+# Update variable order in main dataset
+# d <- moveme(d, "neg_tch_fb_s16", "after", "SS_B1")
+```
+
+```{r grit 2014 only}
+# GR2_f14 I often set a goal but later choose to pursue a different one. # Strongly Disagree (1) -- Strongly Agree (6)
+    d$GR2_R_f14 <- 7 - d$GR2_f14
+    d <- moveme(d, "GR2_R_f14", "after", "GR2_f14" )
+# GR4_f14  I finish whatever I begin.
+
+# Alpha value for composite variable    
+a <- alpha(na.omit(d[,c("GR2_R_f14", "GR4_f14")])); a # .24
+
+hist(d$GR2_R_f14)
+hist(d$GR2_f14)
+
+# Don't create composite variable, just use GR2_f14 for grit
+```
+
+
+## variable cleanup
+```{r}
+# rename variables
+d$Pattern_1415 <- d$Pattern1415_1415; d$Pattern1415_1415 <- NULL                                       
+d$GORT_date_1415 <- d$GORT_date1415_1415; d$GORT_date1415_1415 <- NULL                                                
+d$Pattern1_1415 <- d$Pattern1_1415_1415; d$Pattern1_1415_1415 <- NULL                                                
+d$Pattern2_1415 <- d$Pattern2_1415_1415; d$Pattern2_1415_1415 <- NULL                                                
+d$Pattern3_1415 <- d$Pattern3_1415_1415; d$Pattern3_1415_1415 <- NULL                                                
+d$Pattern4_1415 <- d$Pattern4_1415_1415; d$Pattern4_1415_1415 <- NULL                                                
+d$Pattern5_1415 <- d$Pattern5_1415_1415; d$Pattern5_1415_1415 <- NULL                                                
+d$Pattern6_1415 <- d$Pattern6_1415_1415; d$Pattern6_1415_1415 <- NULL                                                
+d$Pattern7_1415 <- d$Pattern7_1415_1415; d$Pattern7_1415_1415 <- NULL                                                
+d$Pattern8_1415 <- d$Pattern8_1415_1415; d$Pattern8_1415_1415 <- NULL                                                
+d$Pattern9_1415 <- d$Pattern9_1415_1415; d$Pattern9_1415_1415 <- NULL 
+
+d <- moveme(d, c("Pattern_1415", "GORT_date_1415", "Pattern1_1415", "Pattern2_1415", "Pattern3_1415", "Pattern4_1415", "Pattern5_1415", "Pattern6_1415", "Pattern7_1415", "Pattern8_1415", "Pattern9_1415"), "after", "GORT_RR_1415")
+
+d <- moveme(d, c("ITI_amount_f14_R", "ITI_change_f14_R", "ITI_basic_f14_R", "ITI_comp_f14"), "after", "ITI_basic_f14")
+
+d <- moveme(d, c("ITI_amount_s15_R", "ITI_change_s15_R", "ITI_basic_s15_R", "ITI_comp_s15"), "after", "ITI_basic_s15") 
+
+d <- moveme(d, c("ITI_amount_f15_R", "ITI_change_f15_R", "ITI_basic_f15_R", "ITI_comp_f15"), "after", "ITI_basic_f15")                                                  
+
+d$BRK_______________NEW_VARIABLES_______________BRK <- NA
+d <- moveme(d, "BRK_______________NEW_VARIABLES_______________BRK", "after", "Yearbook_1516t1")
+
+d <- moveme(d, "WISC_1415", "after", "WISC_TestDate_1415")                                                        
+d <- moveme(d, "gort_1415", "after", "GORT_RR_1415")  
+
+# drop meaningless variable
+d <- subset(d, select = -c(STins_f14, idnum_ck1, SSins2_f14))
+
+d[0,]
+```
+
+
+# XX. Save your merged data as .Rdata
+```{r save you progress in an rdata file}
+setwd("/Users/brozenkr/Box Sync/LD")
+save.image(file = "03_LDMS_master.Rdata")
+```
