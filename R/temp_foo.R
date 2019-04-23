@@ -8,8 +8,7 @@
 #' @examples
 #' temp_foo(mtcars, x = mpg)
 
-temp_foo <- function(data, x){
-  x <- enquo(x)
-  data %>% pull(!!x) %>% mean()
+temp_foo <- function(name, birthdate){
+  paste("Happy Bday", name, "it's", birthdate)
 }
 
