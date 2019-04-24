@@ -1,0 +1,22 @@
+---
+title: ""
+author: "Joseph T. Powers"
+date: "2019-"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+# Overview: 
+
+```{r packages and parameters, message=FALSE, warning=FALSE}
+source(here::here("parameters.R"))
+
+library(tidyverse) 
+library(lubridate)
+library(magrittr) 
+library(readxl) 
+library(modelr)
+```
+

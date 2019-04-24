@@ -1,0 +1,30 @@
+---
+title: ""
+author: "Joseph T. Powers"
+date: "2019-"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+# Overview: 
+
+```{r global options, include=FALSE}
+knitr::opts_chunk$set(
+  fig.height = 4, fig.width = 6,
+  fig.align='center', dpi = 300, 
+  include=FALSE, echo=FALSE, message=FALSE, warning=FALSE
+)
+```
+
+```{r packages and parameters, message=FALSE, warning=FALSE}
+source(here::here("parameters.R"))
+
+library(tidyverse) 
+library(lubridate)
+library(magrittr) 
+library(readxl) 
+library(modelr)
+```
+
