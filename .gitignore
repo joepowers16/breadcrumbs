@@ -1,6 +1,7 @@
 # History files
 .Rhistory
 .Rapp.history
+.DS_Store
 
 # Session Data files
 .RData
@@ -38,3 +39,6 @@ rsconnect/
 
 # large data files
 *_cloud/
+
+# private files not for github
+data_generator.R
