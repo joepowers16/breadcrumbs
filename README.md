@@ -5,4 +5,4 @@ The code for this pacakge can be found at https://github.com/joepowers16/breadcr
 
 The data can be downloaded from Google Drive at https://drive.google.com/drive/folders/1tfx12J8mhEzpEGOil8UIKXP7Mb7V_F7N?usp=sharing
 
-Please download the folder and place it directly within the breadcrumbs/data/ directory.
+Please download the folder and place it directly within the breadcrumbs/ directory.
