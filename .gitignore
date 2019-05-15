@@ -39,6 +39,7 @@ rsconnect/
 
 # large data files
 *_cloud/
+cloud_*/
 
 # private files not for github
 data_generator.R
