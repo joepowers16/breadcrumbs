@@ -9,7 +9,7 @@
 
 create_project_directories <- function(){
   # extract project name for labeling cloud directory
-  project_name <- basename(rstudioapi::getActiveProject() )
+  project_name <- basename( rstudioapi::getActiveProject() )
 
   project_cloud_dir <- paste0("cloud_", project_name)
 
@@ -23,7 +23,7 @@ create_project_directories <- function(){
 
   purrr::walk(eda_template, dir.create)
 
-  file.create("file_paths.R") # File in which to save file paths
+  add_file_paths() # File in which to save file paths
   file.create("README.md") # File in which to save file paths
   breadcrumbs::add_gitignore()
 }
