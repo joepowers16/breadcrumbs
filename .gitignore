@@ -43,3 +43,4 @@ cloud_*/
 
 # private files not for github
 data_generator.R
+R_under_dev/
