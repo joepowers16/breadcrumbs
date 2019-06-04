@@ -1,13 +1,13 @@
 #' Creates the directories for a typical EDA project
 #'
 #' Creates the directories for a typical EDA project
-#' @param project_name a string representing the name of the Rproject
+#' @param vignette a boolean variable indicating whether one folder should be named "vignette" rather than the default "analysis"
 #' @keywords organization workflow eda
 #' @export
 #' @examples
 #' create_project_directories()
 
-create_project_directories <- function(){
+create_project_directories <- function(vignette = FALSE, ...){
   # extract project name for labeling cloud directory
   project_name <- basename( rstudioapi::getActiveProject() )
 
@@ -23,7 +23,9 @@ create_project_directories <- function(){
 
   purrr::walk(eda_template, dir.create)
 
-  add_file_paths() # File in which to save file paths
-  file.create("README.md") # File in which to save file paths
+  breadcrumbs::add_file_paths()
+  file.create("README.md")
   breadcrumbs::add_gitignore()
+
+  if (vignette == TRUE) {file.rename("analysis", "vignette")}
 }

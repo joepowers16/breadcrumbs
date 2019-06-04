@@ -4,10 +4,10 @@
 \alias{create_project_directories}
 \title{Creates the directories for a typical EDA project}
 \usage{
-create_project_directories()
+create_project_directories(vignette = FALSE, ...)
 }
 \arguments{
-\item{project_name}{a string representing the name of the Rproject}
+\item{vignette}{a boolean variable indicating whether one folder should be named "vignette" rather than the default "analysis"}
 }
 \description{
 Creates the directories for a typical EDA project
