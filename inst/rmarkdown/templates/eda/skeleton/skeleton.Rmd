@@ -1,7 +1,7 @@
 ---
 title: ""
 author: "Joseph T. Powers"
-date: "2019-"
+date: "`r gsub( ' .*$', '', file.info( knitr::current_input() )$ctime)`"
 output: 
   html_document:
     toc: true
@@ -11,7 +11,7 @@ output:
 # Overview: 
 
 ```{r packages and parameters, message=FALSE, warning=FALSE}
-source(here::here("parameters.R"))
+source(here::here("file_paths.R"))
 
 library(tidyverse) 
 library(lubridate)

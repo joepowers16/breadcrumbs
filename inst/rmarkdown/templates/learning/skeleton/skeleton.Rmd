@@ -1,0 +1,22 @@
+---
+title: "Temp_Title"
+author: "Joseph T. Powers"
+date: "`r gsub( ' .*$', '', file.info( knitr::current_input() )$ctime)`"
+output: 
+  html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 4
+---
+
+# Overview: 
+
+```{r packages and parameters, message=FALSE, warning=FALSE}
+source(here::here("file_paths.R"))
+
+pacman::p_boot()
+pacman::p_load(lubridate, magrittr, modelr, tidyverse)
+
+theme_set(theme_classic())
+```
+
