@@ -1,5 +1,5 @@
 ---
-title: "Temp_Title"
+title: ""
 author: "Joseph T. Powers"
 date: "`r gsub( ' .*$', '', file.info( knitr::current_input() )$ctime)`"
 output: 
@@ -7,6 +7,7 @@ output:
     number_sections: true
     toc: true
     toc_depth: 4
+    code_download: true
 ---
 
 # Overview: 
