@@ -56,17 +56,17 @@ clean:
 	rm -f $(ANL)/*.html
 
 clobber:
-	rm -f $(DATA)/*.rds
+	rm -f $(ANL)/*.html $(DATA)/*.rds
 
 ##############################################################################
 ############################### MUNGE DATA ###################################
 ##############################################################################
 
-target1.rds: prerequisite_script.R prerequisite1.csv prerequisite2.csv \
-prerequisite3.csv
+target1.rds: prerequisite_script.R prerequisite1.csv prerequisite2.csv \\\
+Terribly\\\ Named\\\ Prerequisite.xlsx
 	Rscript $<
 
-target2.rds: prerequisite_script.Rmd prerequisite4.csv prerequisite5.csv \
+target2.rds: prerequisite_script.Rmd prerequisite4.csv prerequisite5.csv \\\
 prerequisite6.csv
 	$(KNIT)
 
@@ -120,6 +120,10 @@ my_report.html: learner_skill_coverage.Rmd target1.rds target2.rds
 # text editor is set to use tabs and NOT spaces. This can be confirmed in
 # RStudio by going to \"Project Options / Code Editing\" and making sure that
 # the box next to \"Insert Spaces for Tabs\" is unchecked.
+#
+# Another useful tip is that escape '\\\' can be used for linebreaks if your
+# list of prerequisites gets too wide. '\\\' is also useful if you have raw
+# data files with illegal spaces or symbols. See example above for target1.rds.
 
 # When used in R,
 #  'target' will be an report output like html or pdf, or data output like
