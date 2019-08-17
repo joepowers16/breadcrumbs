@@ -14,6 +14,10 @@ add_file_paths <- function(dir_R = here::here()){
     glue::glue('
 dir_proj <- here::here()
 dir_cloud <- here::here("cloud_{project_name}")
+dir_data <- fs::path(dir_cloud, "data")
+dir_raw <- fs::path(dir_data, "raw")
+dir_munge <- here::here("munge")
+dir_analysis <- here::here("analysis")
 dir_reports <- fs::path(dir_cloud, "reports")
 ')
     writeLines(file_names_template, fs::path(dir_R, "file_paths.R"))
