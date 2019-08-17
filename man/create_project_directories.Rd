@@ -2,15 +2,17 @@
 % Please edit documentation in R/create_project_directories.R
 \name{create_project_directories}
 \alias{create_project_directories}
-\title{Creates the directories for a typical EDA project}
+\title{Creates the standard set of subdirectories for a typical R project}
 \usage{
-create_project_directories(vignette = FALSE, ...)
+create_project_directories(style = "default", vignette = FALSE, ...)
 }
 \arguments{
-\item{vignette}{a boolean variable indicating whether one folder should be named "vignette" rather than the default "analysis"}
+\item{style}{string value indicating the style of subdirectories to create (c("default", "minimal"))}
+
+\item{vignette}{a boolean value indicating whether "analysis" directory should be named "vignette"}
 }
 \description{
-Creates the directories for a typical EDA project
+Creates the standard set of subdirectories for a typical R project
 }
 \examples{
 create_project_directories()
