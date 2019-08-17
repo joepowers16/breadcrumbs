@@ -1,7 +1,7 @@
 ---
 title: ""
 author: "Joseph T. Powers"
-date: "`r gsub( ' .*$', '', file.info( knitr::current_input() )$ctime)`"
+date: "gsub( ' .*$', '', file.info( knitr::current_input() )$ctime )"
 output: 
   html_document:
     number_sections: true
