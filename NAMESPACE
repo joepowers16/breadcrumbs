@@ -3,6 +3,7 @@
 export(Mode)
 export(add_file_paths)
 export(add_gitignore)
+export(add_makefile)
 export(add_readme)
 export(base_round)
 export(clean_names)

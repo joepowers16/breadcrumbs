@@ -4,7 +4,8 @@
 \alias{create_project_directories}
 \title{Creates the standard set of subdirectories for a typical R project}
 \usage{
-create_project_directories(style = "default", vignette = FALSE, ...)
+create_project_directories(style = "default", license = "none",
+  vignette = FALSE, add_makefile = TRUE, ...)
 }
 \arguments{
 \item{style}{string value indicating the style of subdirectories to create (c("default", "minimal"))}

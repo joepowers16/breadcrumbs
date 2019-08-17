@@ -8,7 +8,7 @@
 #' @examples
 #' create_project_directories()
 
-create_project_directories <- function(style = "default", vignette = FALSE, ...){
+create_project_directories <- function(style = "default", license = "none", vignette = FALSE, add_makefile = TRUE, ...){
   # extract project name for labeling cloud directory
   project_name <- basename( rstudioapi::getActiveProject() )
 
@@ -53,4 +53,8 @@ create_project_directories <- function(style = "default", vignette = FALSE, ...)
   }
 
   if (vignette == TRUE) {file.rename("analysis", "vignette")}
+
+  if (license == "MIT") {usethis::use_mit_license()}
+
+  if (add_makefile == TRUE) {breadcrumbs::add_makefile()}
 }
