@@ -8,7 +8,7 @@ create_project_directories(style = "default", license = "none",
   vignette = FALSE, add_makefile = TRUE, ...)
 }
 \arguments{
-\item{style}{string value indicating the style of subdirectories to create (c("default", "minimal"))}
+\item{style}{string value indicating the style of subdirectories to create (c("default", "learning", "minimal"))}
 
 \item{vignette}{a boolean value indicating whether "analysis" directory should be named "vignette"}
 }

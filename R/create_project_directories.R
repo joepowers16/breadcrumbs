@@ -1,7 +1,7 @@
 #' Creates the standard set of subdirectories for a typical R project
 #'
 #' Creates the standard set of subdirectories for a typical R project
-#' @param style string value indicating the style of subdirectories to create (c("default", "minimal"))
+#' @param style string value indicating the style of subdirectories to create (c("default", "learning", "minimal"))
 #' @param vignette a boolean value indicating whether "analysis" directory should be named "vignette"
 #' @keywords organization workflow eda
 #' @export
