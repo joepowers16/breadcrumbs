@@ -7,7 +7,7 @@
 #' @examples
 #' add_readme()
 
-add_readme <- function(style = ..., dir_proj = here::here()){
+add_readme <- function(style, dir_proj = here::here()){
   if (style == "learning") {
     readme_text <- "
 This project uses a directory format that organizes my learning progress in a way
