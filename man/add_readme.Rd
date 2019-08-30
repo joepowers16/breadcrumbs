@@ -4,7 +4,7 @@
 \alias{add_readme}
 \title{adds a standardized README file to project root directory}
 \usage{
-add_readme(style = ..., dir_proj = here::here())
+add_readme(style, dir_proj = here::here())
 }
 \arguments{
 \item{learning}{a boolean to indicate if the README should describe the use of the vignette subdirectories}
