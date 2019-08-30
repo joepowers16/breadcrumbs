@@ -4,7 +4,7 @@
 \alias{add_gitignore}
 \title{adds a standardized gitignore file to project root directory}
 \usage{
-add_gitignore(dir_R = here::here())
+add_gitignore(path = here::here())
 }
 \description{
 This function adds a standardized gitignore file to project root directory
