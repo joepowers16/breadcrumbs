@@ -4,7 +4,7 @@
 \alias{add_makefile}
 \title{This function adds a template Makefile to your prject's root directory}
 \usage{
-add_makefile()
+add_makefile(path = here::here())
 }
 \description{
 This function adds a template Makefile to your prject's root directory
