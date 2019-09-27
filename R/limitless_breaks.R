@@ -6,9 +6,9 @@
 #' @keywords breaks ggplot
 #' @export
 #' @examples
-#' ggplot(mtcars, aes(x=wt,y=mpg)) + geom_point() + scale_y_continuous(breaks = min_max_breaks)
+#' ggplot(mtcars, aes(x=wt,y=mpg)) + geom_point() + scale_y_continuous(breaks = limitless_breaks)
 
-min_max_breaks <- function(.x, .step = 1){
+limitless_breaks <- function(.x, .step = 1){
 	seq(floor(min(.x)), ceiling(max(.x)), by = .step)
 }
 
