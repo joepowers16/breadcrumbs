@@ -1,6 +1,6 @@
-#' Say what this function does in one line
+#' saves ggplot plots with attractive defaults
 #'
-#' Say what this function does in greater detail if that helps.
+#' saves ggplot plots with attractive defaults
 #' @param plot_object is a ggplot object
 #' @param file_name is the name you want your plot image saved as
 #' @param color of file name that will appear in caption (default is "lightgray")

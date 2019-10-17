@@ -11,5 +11,6 @@ This function adds a standardized file_paths.R project root directory
 }
 \examples{
 add_file_paths()
+Overview: Source this script to load all file path strings for your project
 }
 \keyword{file_paths.R}

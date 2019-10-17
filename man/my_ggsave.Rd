@@ -2,7 +2,7 @@
 % Please edit documentation in R/my_ggsave.R
 \name{my_ggsave}
 \alias{my_ggsave}
-\title{Say what this function does in one line}
+\title{saves ggplot plots with attractive defaults}
 \usage{
 my_ggsave(plot_object, file_name, color = "lightgray", face = "italic",
   size = 3, ...)
@@ -21,7 +21,7 @@ my_ggsave(plot_object, file_name, color = "lightgray", face = "italic",
 \item{...}{additional arguments for ggsave such as height, width, units, etc.}
 }
 \description{
-Say what this function does in greater detail if that helps.
+saves ggplot plots with attractive defaults
 }
 \examples{
 my_ggsave(p, "myplot.png")
