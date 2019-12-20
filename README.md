@@ -1,14 +1,15 @@
-How is breadcrumbs useful?
+Who should you use breadcrumbs?
 ================
 2019-12-20
 
-I hate being unable to find code and data in old data projects.
+If you hate being unable to find code and data in old data projects, you
+may find `breadcrumbs` to be a breath of fresh air.
 
 The goal for the `breadcrumbs` package is to provide a routine structure
-to subdirectories in your R projects so that you put code and data in
-the right places and find them later with ease. `breadcrumbs` also
-encourages you to coordinate your code and data with Makefile(s), which
-are a wonderful resource for reproducibile workflows.
+to R projects so that you put code and data in the right places and find
+them later with ease. `breadcrumbs` also encourages you to coordinate
+your code and data with Makefile(s), which are a wonderful resource for
+reproducibile workflows.
 
 ### Getting started
 
