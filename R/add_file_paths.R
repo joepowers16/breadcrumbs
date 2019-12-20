@@ -8,7 +8,7 @@
 
 add_file_paths <- function(dir_R = here::here()){
 
-  project_name <- project_name <- basename( rstudioapi::getActiveProject() )
+  project_name <- basename( rstudioapi::getActiveProject() )
 
   file_names_template <-
     glue::glue("##############################################################################-
