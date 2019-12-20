@@ -23,15 +23,16 @@ directory.
 
 #### The subdirectory structure
 
-`<project>_cloud_dir/` I use the cloud\_dir to save large files like
-data and image-laden reports that I back up in the cloud but do not push
-to GitHub because of their size.  
+`<project>_cloud_dir/` I use the `<project>_cloud_dir/` to save large
+files like data and image-laden reports that don’t belong in GitHub. I
+recommend you sync this folder to the cloud via Google Drive or Box so
+that it is backed up off your local machine.  
 ….`reports/` to store finished reports and presentations  
 ….`data/` to store processed data  
 ……..`raw/` to store raw data  
 `R/` to store your functions  
-`munge/` to store scripts that output processed data `analysis/` to
-store your analysis scripts
+`munge/` to store scripts that output processed data  
+`analysis/` to store your analysis scripts
 
 `breadcrumbs` is filled with functions to support the use of these
 subdirectories. For instance, I have found it useful to save my
