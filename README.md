@@ -8,9 +8,10 @@ subdirectories in your R projects so that you and your collaborators can
 readily store code and data in appropriate folders, and coordinate that
 code and data with Makefiles.
 
-To get started using `breadcrumbs` 1. open a new or existing R project  
-2\. Load the breadcrumbs package `library(breadcrumbs)` 2. Execute the
-`create_project_directories()` function in your console
+To get started using `breadcrumbs`  
+1\. open a new or existing R project  
+2\. Load the breadcrumbs package `library(breadcrumbs)`  
+2\. Execute the `create_project_directories()` function in your console
 
 You will now see a standard set of project subdirectories appear in your
 project directory, and breadcrumbs is filled with functions to support
@@ -39,7 +40,8 @@ library(tidyverse)
 
 ggplot(mtcars, aes(x = wt, y = mpg)) + 
     geom_point() + 
-    labs(title = wrap("The wrap function frees me up to write long and informative titles on my plots without having to troubleshoot the placement of linebreaks. This is useful since I often forget what I once found useful about a plot.", 80))
+    labs(title = wrap("The wrap function frees me up to write long and informative titles on my plots without having to troubleshoot the placement of linebreaks. This is useful since I often forget what I once found useful about a plot.", 80)) + 
+    theme_minimal()
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
