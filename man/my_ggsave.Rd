@@ -4,8 +4,14 @@
 \alias{my_ggsave}
 \title{saves ggplot plots with attractive defaults}
 \usage{
-my_ggsave(plot_object, file_name, color = "lightgray", face = "italic",
-  size = 3, ...)
+my_ggsave(
+  plot_object,
+  file_name,
+  color = "lightgray",
+  face = "italic",
+  size = 3,
+  ...
+)
 }
 \arguments{
 \item{plot_object}{is a ggplot object}

@@ -4,8 +4,10 @@
 \alias{function_template}
 \title{This function generates an R file with a roxygen2-friendly template}
 \usage{
-function_template(function_name = "my_function_template",
-  dir_R = here::here("R"))
+function_template(
+  function_name = "my_function_template",
+  dir_R = here::here("R")
+)
 }
 \arguments{
 \item{function_name}{is the name of the function you are creating}
